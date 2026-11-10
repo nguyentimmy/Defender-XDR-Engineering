@@ -18,6 +18,8 @@ This workbook collapses all of it into a single view:
 
 Use it for a fleet sweep, an insider-risk case (departing employee, HR referral), or to check whether a compromised device or account moved data out.
 
+> ⚠️ **Disclaimer:** This workbook does not replace alert triage. Alerts and incidents should still be investigated through the normal triage and IR process for a deeper investigation. Use it as a supplemental view to surface related activity and context that may not generate an alert on its own.
+
 ---
 
 ## ⚖️ Risk Score
