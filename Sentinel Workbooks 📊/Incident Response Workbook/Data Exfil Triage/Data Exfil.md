@@ -30,16 +30,19 @@ Every row gets a `RiskScore` (0–10, capped) and a Severity label: 🔴 Critica
 
 | Category | Signals |
 | --- | --- |
-| **Cloud & Web Uploads** | File-sharing, paste, and anonymous hosts, personal cloud storage, webhooks and Telegram/ngrok endpoints (sanctioned M365 storage excluded) |
+| **Cloud & Web Uploads** | File-sharing, paste, and anonymous hosts, personal cloud storage, webhooks (Discord, Slack, Telegram, ngrok) (sanctioned M365 storage excluded) |
 | **Exfil Tooling** | rclone, MEGA, AzCopy, AWS/Azure/GCP CLIs, s3cmd, WinSCP/FTP; Linux scp, rsync, sftp, lftp to remote hosts; curl/wget only when uploading |
 | **PowerShell Uploads** | WebClient UploadFile/UploadData, Invoke-WebRequest/RestMethod with -InFile or POST/PUT |
-| **Archiving & Encryption** | Mass or password-protected archives (7-Zip, WinRAR, zip, tar), gpg and openssl encryption, archives of sensitive paths (user folders, .pst, .kdbx, keys, /home, /etc, .ssh, databases) |
+| **Archiving & Encryption** | Mass or password-protected archives (7-Zip, WinRAR, zip, tar, Compress-Archive), gpg and openssl encryption, archives of sensitive paths (user folders, .pst, .kdbx, keys, /home, /etc, .ssh, databases) |
 | **Local Staging** | Archives dropped in Temp, Public, ProgramData, /tmp, /dev/shm, /var/tmp above a size threshold |
 | **Removable Media** | Windows USB mounts, Linux mount/udisksctl, bulk writes to external drives (D–Z, /media, /run/media, /mnt) |
 | **Linux Exfil Channels** | /dev/tcp redirects, netcat/socat file sends, tar piped over SSH, raw disk reads with dd, base64 piped to curl/nc |
 | **DNS & ICMP Tunneling** | iodine, dnscat2, dns2tcp, ptunnel, icmpsh, DNSExfiltrator |
 | **SharePoint & OneDrive** | Bulk file downloads, external and anonymous sharing links |
-| **Email** | Outbound attachments to external or personal webmail, inbox and transport forwarding rules |
+| **Email** | Outbound attachments to external or personal webmail, inbox and transport forwarding rules, command-line mail with attachments (mail, mutt, swaks, Send-MailMessage) |
+| **Webhook URLs** | Discord, Telegram, Slack and similar webhook URLs in any command line, caught even when the network URL is empty |
+| **Ad Hoc File Servers** | python http.server, uploadserver, php -S, netcat or ncat serving files for the attacker to pull |
+| **Code Repositories** | git push to an explicit URL, new git remotes, gh repo create |
 | **Network Volume** | High connection fan-out per process (proxy for volume, since Defender has no byte counts) |
 
 ---
@@ -88,6 +91,8 @@ Every row gets a `RiskScore` (0–10, capped) and a Severity label: 🔴 Critica
 //              T1560.001 - Archive Collected Data via Utility
 //              T1114.003 - Email Collection: Forwarding Rule
 //              T1074.001 - Local Data Staging
+//              T1567.001 - Exfiltration to Code Repository
+//              T1048.003 - Exfiltration Over Unencrypted Non-C2 Protocol (CLI email, ad hoc servers)
 // ============================================================
 // PARAMETERS: {TimeRange} (required), {DeviceName} and {UserPrincipalName}
 // are OPTIONAL scoping filters - leave both empty for a fleet-wide sweep.
@@ -137,17 +142,20 @@ union isfuzzy=true
         "pastebin.com", "paste.ee", "ghostbin.com", "rentry.co",
         "controlc.com", "dpaste.com", "hastebin.com", "privatebin",
         "gist.github.com", "termbin.com",
-        "api.telegram.org", "webhook.site", "pipedream.net", "requestbin",
+        "api.telegram.org", "discord.com", "discordapp.com", "hooks.slack.com",
+        "webhook.site", "pipedream.net", "requestbin",
         "interact.sh", "oast.", "ngrok.io", "ngrok-free.app",
         "dropbox.com", "box.com", "drive.google.com", "icloud.com",
         "pcloud.com", "sync.com", "tresorit.com", "degoo.com"
     )
     | where not(RemoteUrl has_any (SanctionedCloud))
+    // Desktop Discord app is normal chat traffic - webhook abuse comes from scripts and tools
+    | where not(RemoteUrl has "discord" and InitiatingProcessFileName in~ ("discord.exe", "update.exe", "discord"))
     | extend IsPasteSite = RemoteUrl has_any ("pastebin", "paste.ee", "ghostbin", "rentry", "controlc",
         "dpaste", "hastebin", "privatebin", "gist.github", "termbin")
     | extend IsAnonHost = RemoteUrl has_any ("anonfiles", "transfer.sh", "filebin", "file.io", "ufile",
         "gofile", "catbox", "temp.sh", "0x0.st", "uguu", "bayfiles", "bashupload", "oshi.at", "tmpfiles")
-    | extend IsWebhook = RemoteUrl has_any ("api.telegram.org", "webhook.site", "pipedream",
+    | extend IsWebhook = RemoteUrl has_any ("api.telegram.org", "discord", "hooks.slack.com", "webhook.site", "pipedream",
         "requestbin", "interact.sh", "oast.", "ngrok")
     | summarize
         FirstSeen = min(TimeGenerated),
@@ -564,6 +572,122 @@ union isfuzzy=true
              Detail = substring(strcat("Conns/hr: ", tostring(EventCount),
                       " | Unique IPs: ", tostring(UniqueRemoteIPs),
                       " | Domains: ", tostring(UniqueDomains)), 0, 300)
+    | project FirstSeen, LastSeen, Signal, RiskScore, DeviceName, Account, Process, EventCount, Detail
+),
+// ============================================================
+// 14. WEBHOOK / BOT API URL IN COMMAND LINE (Windows + Linux)
+// Catches Discord/Telegram/Slack webhook exfil even when RemoteUrl is empty
+// ============================================================
+(
+    DeviceProcessEvents
+    | where TimeGenerated {TimeRange}
+    | where FileName !in~ ("sudo", "su")
+    | where ProcessCommandLine matches regex @"(?i)(discord(app)?\.com/api/webhooks|api\.telegram\.org/bot|hooks\.slack\.com/services|webhook\.site|pipedream\.net|ngrok-free\.app|ngrok\.io)"
+    | where FileName !in~ ("chrome.exe", "msedge.exe", "firefox.exe", "chrome", "firefox")
+    | summarize
+        FirstSeen = min(TimeGenerated),
+        LastSeen = max(TimeGenerated),
+        EventCount = count(),
+        Commands = make_set(substring(ProcessCommandLine, 0, 200), 3)
+        by DeviceName, Account = AccountName, Process = FileName
+    | extend Signal = "🪝 Webhook URL in Command Line",
+             RiskScore = 8,
+             Detail = substring(strcat("Cmds: ", tostring(Commands)), 0, 300)
+    | project FirstSeen, LastSeen, Signal, RiskScore, DeviceName, Account, Process, EventCount, Detail
+),
+// ============================================================
+// 15. POWERSHELL / .NET ARCHIVING (Windows) - Compress-Archive, ZipFile
+// ============================================================
+(
+    DeviceProcessEvents
+    | where TimeGenerated {TimeRange}
+    | where FileName in~ ("powershell.exe", "pwsh.exe", "pwsh")
+    | where ProcessCommandLine has_any ("Compress-Archive", "CreateFromDirectory", "ZipFile")
+    | extend IsSensitiveTarget = ProcessCommandLine has_any ("\\Documents", "\\Desktop", "\\Downloads",
+        "\\Users\\", ".pst", ".kdbx", "\\Finance", "\\HR", "\\\\")
+    | summarize
+        FirstSeen = min(TimeGenerated),
+        LastSeen = max(TimeGenerated),
+        EventCount = count(),
+        Commands = make_set(substring(ProcessCommandLine, 0, 200), 3),
+        AnySensitive = max(IsSensitiveTarget)
+        by DeviceName, Account = AccountName, Process = FileName
+    | extend Signal = "📦 PowerShell Archiving",
+             RiskScore = 5 + (toint(AnySensitive) * 2),
+             Detail = substring(strcat("Cmds: ", tostring(Commands)), 0, 300)
+    | project FirstSeen, LastSeen, Signal, RiskScore, DeviceName, Account, Process, EventCount, Detail
+),
+// ============================================================
+// 16. PULL-STYLE EXFIL - ad hoc web/file servers on the host (Windows + Linux)
+// ============================================================
+(
+    DeviceProcessEvents
+    | where TimeGenerated {TimeRange}
+    | where FileName !in~ ("sudo", "su")
+    | where ProcessCommandLine has_any ("http.server", "SimpleHTTPServer", "uploadserver", "updog", "pyftpdlib")
+        or (FileName startswith "php" and ProcessCommandLine contains " -S ")
+        or (FileName startswith "ruby" and ProcessCommandLine has "httpd")
+        or (FileName =~ "busybox" and ProcessCommandLine has "httpd")
+        or (FileName in~ ("nc", "ncat", "netcat", "nc.exe", "ncat.exe")
+            and ProcessCommandLine matches regex @"\s-\w*l" and ProcessCommandLine contains "<")
+        or (FileName in~ ("ncat", "ncat.exe") and ProcessCommandLine has "--send-only")
+    | summarize
+        FirstSeen = min(TimeGenerated),
+        LastSeen = max(TimeGenerated),
+        EventCount = count(),
+        Commands = make_set(substring(ProcessCommandLine, 0, 200), 3)
+        by DeviceName, Account = AccountName, Process = FileName
+    | extend Signal = "🌐 Ad Hoc File Server",
+             RiskScore = 6,
+             Detail = substring(strcat("Cmds: ", tostring(Commands)), 0, 300)
+    | project FirstSeen, LastSeen, Signal, RiskScore, DeviceName, Account, Process, EventCount, Detail
+),
+// ============================================================
+// 17. GIT PUSH TO A NEW / EXPLICIT REMOTE (Windows + Linux)
+// Normal pushes to an existing remote are ignored; adding a remote or pushing to a URL is not
+// ============================================================
+(
+    DeviceProcessEvents
+    | where TimeGenerated {TimeRange}
+    | where FileName in~ ("git", "git.exe", "gh", "gh.exe")
+    | where (ProcessCommandLine has "remote" and ProcessCommandLine has_any ("add", "set-url"))
+        or (ProcessCommandLine has "push" and ProcessCommandLine has_any ("http://", "https://", "git@"))
+        or (FileName in~ ("gh", "gh.exe") and ProcessCommandLine has "repo" and ProcessCommandLine has "create")
+    | extend IsPush = ProcessCommandLine has "push"
+    | summarize
+        FirstSeen = min(TimeGenerated),
+        LastSeen = max(TimeGenerated),
+        EventCount = count(),
+        Commands = make_set(substring(ProcessCommandLine, 0, 200), 3),
+        AnyPush = max(IsPush)
+        by DeviceName, Account = AccountName, Process = FileName
+    | extend Signal = "🧑‍💻 Git Push / New Remote",
+             RiskScore = 4 + (toint(AnyPush) * 2),
+             Detail = substring(strcat("Cmds: ", tostring(Commands)), 0, 300)
+    | project FirstSeen, LastSeen, Signal, RiskScore, DeviceName, Account, Process, EventCount, Detail
+),
+// ============================================================
+// 18. COMMAND-LINE EMAIL WITH ATTACHMENTS (Windows + Linux)
+// ============================================================
+(
+    DeviceProcessEvents
+    | where TimeGenerated {TimeRange}
+    | where FileName !in~ ("sudo", "su")
+    | where (FileName in~ ("mail", "mailx", "s-nail", "mutt", "swaks", "sendemail", "msmtp", "sendmail")
+             and (ProcessCommandLine matches regex @"\s-(a|A)\s" or ProcessCommandLine has_any ("--attach", "--attach-type")))
+        or (FileName in~ ("powershell.exe", "pwsh.exe", "pwsh")
+            and ProcessCommandLine has "Send-MailMessage" and ProcessCommandLine has "Attachment")
+        or (FileName in~ ("powershell.exe", "pwsh.exe", "pwsh")
+            and ProcessCommandLine has "SmtpClient" and ProcessCommandLine has "Attachment")
+    | summarize
+        FirstSeen = min(TimeGenerated),
+        LastSeen = max(TimeGenerated),
+        EventCount = count(),
+        Commands = make_set(substring(ProcessCommandLine, 0, 200), 3)
+        by DeviceName, Account = AccountName, Process = FileName
+    | extend Signal = "✉️ Command-Line Email with Attachment",
+             RiskScore = 6,
+             Detail = substring(strcat("Cmds: ", tostring(Commands)), 0, 300)
     | project FirstSeen, LastSeen, Signal, RiskScore, DeviceName, Account, Process, EventCount, Detail
 ),
 // --- Schema pin so union stays stable when a section is empty ---
