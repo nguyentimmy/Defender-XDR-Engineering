@@ -18,6 +18,8 @@ This workbook collapses all of it into a single view:
 
 Use it when a device surfaces in an alert, appears on the endpoint dashboard, or belongs to a user under investigation.
 
+> ⚠️ **Disclaimer:** This workbook does not replace alert triage. Alerts and incidents should still be investigated through the normal triage and IR process for a deeper investigation. Use it as a supplemental view to surface related activity and context that may not generate an alert on its own.
+
 ---
 
 ## ⚖️ Risk Score
@@ -916,7 +918,8 @@ union isfuzzy=true
         or FileName in~ ("rclone", "megacmd", "mega-put", "megatools")
         or (FileName in~ ("curl", "wget")
             and ProcessCommandLine has_any ("transfer.sh", "pastebin", "file.io", "anonfiles", "gofile",
-                "0x0.st", "termbin", "webhook.site", "pipedream", "requestbin", "interact.sh", "oast"))
+                "0x0.st", "termbin", "webhook.site", "pipedream", "requestbin", "interact.sh", "oast",
+                "discord.com/api/webhooks", "discordapp.com/api/webhooks", "api.telegram.org", "hooks.slack.com"))
     | project TimeGenerated, Signal = "📤 Exfil/Collection", DeviceName,
               Account = AccountName,
               InitiatingProcess = InitiatingProcessFileName,
