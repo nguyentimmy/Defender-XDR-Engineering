@@ -48,17 +48,6 @@ Every event gets a `RiskScore` (0–10) and a Severity label: 🔴 Critical / �
 
 ---
 
-## 🚀 How to use it
-
-1. Set **DeviceName** and **TimeRange** (start before the suspected initial access).
-2. Read top-down: the highest risk rows first, then sort by time to build the story.
-3. Pivot on any row's process, account, or hash in Defender for full context.
-4. Export the results and attach them to the incident or IR report.
-
-> 💡 One low-severity row means little. Several signals on the same device in a short window is the pattern to act on.
-
----
-
 ## 📊 Visualization of the Dashboard
 ![alt text](image.png)
 
@@ -69,39 +58,6 @@ Every event gets a `RiskScore` (0–10) and a Severity label: 🔴 Critical / �
 // ============================================================
 // DEVICE COMPROMISE TRIAGE - Workbook (Parameterized, Risk-Scored)
 // ============================================================
-// MITRE ATT&CK:
-//   T1059         - Execution: malicious PowerShell
-//   T1566 / T1204 - Initial Access: Office/script host spawning shells
-//   T1218 / T1105 - LOLBin proxy execution and downloads
-//   T1003.002/.003/.006 / T1555 - SAM, NTDS, DCSync, browser creds
-//   T1560 / T1567 / T1052 - Windows collection, exfil, USB
-//   T1547.001     - Startup folder persistence
-//   T1486         - Mass file encryption, ransom notes
-//   T1068         - BYOVD: drivers from unusual paths
-//   T1547 / T1543 - Persistence: autostart keys, scheduled tasks, services
-//   T1136 / T1098 / T1078 - Persistence/PrivEsc: account manipulation
-//   T1112         - Defense Evasion: registry modification
-//   T1562 / T1070 - Defense Evasion: impair defenses, indicator removal
-//   T1003.001     - Credential Access: LSASS memory
-//   T1087 / T1069 / T1482 / T1558 - Discovery and Kerberos recon
-//   T1021         - Lateral Movement: remote services
-//   T1071 / T1572 - C2: web protocols, tunneling
-//   T1219         - C2: remote access software
-//   T1490         - Impact: inhibit system recovery
-//   Linux:
-//   T1003.008     - Credential Access: /etc/shadow, cracking tools
-//   T1136.001 / T1098 - Account manipulation: useradd, usermod, chpasswd
-//   T1053.003 / T1543.002 / T1098.004 - Persistence: cron, systemd, authorized_keys
-//   T1070.002/.003 / T1562.001 - Defense Evasion: log + history wipe, auditd/mdatp tampering
-//   T1548.001     - PrivEsc: setuid/setcap
-//   T1059.004 / T1095 - Reverse shells: /dev/tcp, mkfifo, nc -e
-//   T1046 / T1087.001 / T1082 - Discovery: nmap/masscan, /etc/passwd, uname/id
-//   T1105 / T1027 / T1204 - Download+exec, obfuscation, run from /tmp
-//   T1572 / T1021 - Tunneling (ssh -R/-D/-L, chisel), remote services
-//   T1560 / T1048 / T1567 - Collection, exfil over curl/scp/cloud services
-//   T1496 / T1485 / T1561 - Cryptomining, destructive/ransomware impact
-//   T1190 / T1505.003 - Web server spawning shells
-//
 let TargetDevice = "{DeviceName}";
 let BenignParents = dynamic([
     "msedge.exe", "msedgewebview2.exe",
@@ -444,7 +400,8 @@ union isfuzzy=true
               ChildProcess = "",
               SHA256 = InitiatingProcessSHA256,
               Detail = strcat("Egress: ", InitiatingProcessFileName, " -> ",
-                             coalesce(RemoteUrl, RemoteIP), ":", RemotePort)
+                             iff(isnotempty(RemoteUrl), strcat(RemoteUrl, " (", RemoteIP, ")"), RemoteIP),
+                             ":", RemotePort)
 ),
 // ============================================================
 // TA0011 COMMAND & CONTROL -- T1219/T1572 remote tools & tunnels
@@ -507,11 +464,11 @@ union isfuzzy=true
     DeviceEvents
     | where TimeGenerated {TimeRange}
     | where isempty(TargetDevice) or DeviceName has TargetDevice
-    | where ActionType has_any (
-        "AntivirusDetection", "AntivirusReport",
+    | where ActionType in (
+        "AntivirusDetection", "AntivirusDetectionNotBlocked",
         "SecurityLogCleared", "AsrLsassCredentialTheftBlocked",
         "ExploitGuardNetworkProtectionBlocked", "SmartScreenUrlWarning",
-        "TamperingAttempt", "AntivirusDetectionNotBlocked")
+        "TamperingAttempt")
     | project TimeGenerated, Signal = "🛡️ Defender Detection", DeviceName,
               Account = InitiatingProcessAccountName,
               InitiatingProcess = InitiatingProcessFileName,
@@ -522,7 +479,29 @@ union isfuzzy=true
                              substring(tostring(AdditionalFields), 0, 200))
 ),
 // ============================================================
-// MDE ALERTS -- custom detection rules + built-in EDR/AV alerts
+// AntivirusReport (rescans of already-known files) - one row per device per hour
+// instead of one row per file, to cut noise
+// ============================================================
+(
+    DeviceEvents
+    | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
+    | where ActionType == "AntivirusReport"
+    | summarize TimeGenerated = max(TimeGenerated),
+                Files = dcount(FileName),
+                Names = make_set(FileName, 5)
+        by DeviceName, HourBin = bin(TimeGenerated, 1h)
+    | project TimeGenerated, Signal = "🛡️ Defender Detection", DeviceName,
+              Account = "",
+              InitiatingProcess = "",
+              InitiatingProcessCmd = "",
+              ChildProcess = "",
+              SHA256 = "",
+              Detail = strcat("AntivirusReport | ", tostring(Files), " file(s) rescanned: ",
+                             substring(tostring(Names), 0, 150))
+),
+// ============================================================
+// v4.1 MDE ALERTS -- custom detection rules + built-in EDR/AV alerts
 // One row per alert per device. Severity comes from the alert itself.
 // ============================================================
 (
@@ -813,7 +792,8 @@ union isfuzzy=true
         or (FileName startswith "python" and ProcessCommandLine has "base64"
             and ProcessCommandLine has_any ("exec", "eval", "b64decode"))
         or (FileName in~ ("curl", "wget")
-            and ProcessCommandLine has_any ("/tmp/", "/dev/shm", "/var/tmp"))
+            and ProcessCommandLine has_any ("/tmp/", "/dev/shm", "/var/tmp")
+            and not(ProcessCommandLine matches regex @"\s-(F|T|d)\s|--upload-file|--data|--post-file"))
         or (FileName =~ "chmod" and ProcessCommandLine contains "+x"
             and ProcessCommandLine has_any ("/tmp/", "/dev/shm", "/var/tmp"))
         or FolderPath matches regex @"^/(tmp|dev/shm|var/tmp)/"
@@ -1171,8 +1151,9 @@ union isfuzzy=true
               Detail = iff(Kind has "Listener",
                            strcat("Listening ", LocalIP, ":", tostring(LocalPort), " ",
                                   InitiatingProcessFileName),
-                           strcat(InitiatingProcessFileName, " -> ", coalesce(RemoteUrl, RemoteIP), ":",
-                                  tostring(RemotePort)))
+                           strcat(InitiatingProcessFileName, " -> ",
+                                  iff(isnotempty(RemoteUrl), strcat(RemoteUrl, " (", RemoteIP, ")"), RemoteIP),
+                                  ":", tostring(RemotePort)))
 ),
 // ============================================================
 // NETWORK -- scanning: one process reaching many internal hosts or many ports
@@ -1202,7 +1183,7 @@ union isfuzzy=true
               Detail = strcat(Hosts, " hosts / ", Ports, " ports / ", Conns, " connections")
 ),
 // ============================================================
-// TA0001/TA0002 INITIAL ACCESS -- T1566/T1204 Office or script host spawning a shell/LOLBin
+// v4.8 TA0001/TA0002 INITIAL ACCESS -- T1566/T1204 Office or script host spawning a shell/LOLBin
 // ============================================================
 (
     DeviceProcessEvents
@@ -1225,7 +1206,7 @@ union isfuzzy=true
                              substring(ProcessCommandLine, 0, 200))
 ),
 // ============================================================
-// TA0005/TA0011 LOLBIN EXECUTION -- T1218 / T1105 proxy execution and downloads
+// v4.8 TA0005/TA0011 LOLBIN EXECUTION -- T1218 / T1105 proxy execution and downloads
 // ============================================================
 (
     DeviceProcessEvents
@@ -1256,7 +1237,7 @@ union isfuzzy=true
               Detail = strcat("LOLBin: ", FileName, " ", substring(ProcessCommandLine, 0, 220))
 ),
 // ============================================================
-// TA0006 CREDENTIAL ACCESS -- T1003.002/.003/.006, T1555 SAM/NTDS/DCSync/browser stores
+// v4.8 TA0006 CREDENTIAL ACCESS -- T1003.002/.003/.006, T1555 SAM/NTDS/DCSync/browser stores
 // ============================================================
 (
     DeviceProcessEvents
@@ -1280,7 +1261,7 @@ union isfuzzy=true
               Detail = strcat("Cred store: ", FileName, " ", substring(ProcessCommandLine, 0, 220))
 ),
 // ============================================================
-// TA0009/TA0010 WINDOWS EXFIL / COLLECTION -- T1560 / T1567 / T1048
+// v4.8 TA0009/TA0010 WINDOWS EXFIL / COLLECTION -- T1560 / T1567 / T1048
 // ============================================================
 (
     DeviceProcessEvents
@@ -1318,7 +1299,7 @@ union isfuzzy=true
               Detail = strcat("USB mounted | ", substring(tostring(AdditionalFields), 0, 180))
 ),
 // ============================================================
-// TA0003 PERSISTENCE -- T1547.001 Startup folder drops
+// v4.8 TA0003 PERSISTENCE -- T1547.001 Startup folder drops
 // ============================================================
 (
     DeviceFileEvents
@@ -1336,7 +1317,7 @@ union isfuzzy=true
               Detail = strcat("Startup drop: ", substring(FolderPath, 0, 200))
 ),
 // ============================================================
-// TA0040 IMPACT -- T1486 mass file rename/modify by one process (encryption)
+// v4.8 TA0040 IMPACT -- T1486 mass file rename/modify by one process (encryption)
 // ============================================================
 (
     DeviceFileEvents
@@ -1365,7 +1346,7 @@ union isfuzzy=true
                              " extensions in 5 min")
 ),
 // ============================================================
-// TA0040 IMPACT -- T1486 ransom notes dropped across many folders
+// v4.8 TA0040 IMPACT -- T1486 ransom notes dropped across many folders
 // ============================================================
 (
     DeviceFileEvents
@@ -1390,7 +1371,7 @@ union isfuzzy=true
               Detail = strcat("Ransom-note pattern '", Note, "' in ", Folders, " folders")
 ),
 // ============================================================
-// TA0005 DEFENSE EVASION -- T1068 / T1562 BYOVD: drivers loaded from unusual paths
+// v4.8 TA0005 DEFENSE EVASION -- T1068 / T1562 BYOVD: drivers loaded from unusual paths
 // ============================================================
 (
     DeviceEvents
@@ -1489,13 +1470,31 @@ union isfuzzy=true
 | extend Severity = case(RiskScore >= 9, "🔴 Critical",
                          RiskScore >= 7, "🟠 High",
                          RiskScore >= 5, "🟡 Medium", "⚪ Low")
+// ============================================================
+// IOC EXTRACTION - IPs and domains pulled from the full detail and parent
+// command line (before truncation). Loopback and Azure platform IPs dropped.
+// ============================================================
+| extend IocText = strcat(Detail, " ", InitiatingProcessCmd)
+| extend Cands = array_concat(
+    extract_all(@"(\d\d?\d?\.\d\d?\d?\.\d\d?\d?\.\d\d?\d?)", IocText),
+    extract_all(@"(?i)(?:https?|ftp)://([a-z0-9][a-z0-9.\-]*\.[a-z][a-z0-9\-]*)", IocText),
+    extract_all(@"(?i)->\s([a-z0-9][a-z0-9.\-]*\.[a-z][a-z0-9\-]*)", IocText))
+| mv-apply Ioc = Cands to typeof(string) on (
+    where isnotempty(Ioc)
+    | where not(Ioc startswith "127." or Ioc in ("0.0.0.0", "255.255.255.255",
+                                                 "169.254.169.254", "168.63.129.16"))
+    | where isnotnull(parse_ipv4(Ioc)) or Ioc matches regex @"(?i)[a-z]"
+    | summarize IOCs = make_set(Ioc, 10)
+)
+| extend IOCs = strcat_array(IOCs, ", ")
+| project-away IocText, Cands
 | extend InitiatingProcessCmd = substring(InitiatingProcessCmd, 0, 120)
 | extend Detail = substring(Detail, 0, 150)
 | summarize LastSeen = max(TimeGenerated), Hits = count()
-    by Severity, RiskScore, Signal, DeviceName, Account, Detail,
+    by Severity, RiskScore, Signal, DeviceName, Account, Detail, IOCs,
        InitiatingProcess, InitiatingProcessCmd, ChildProcess, SHA256,
        TimeBin = bin(TimeGenerated, 1m)
 | project TimeGenerated = LastSeen, Severity, RiskScore, Signal, DeviceName, Account, Detail,
-          Hits, InitiatingProcess, InitiatingProcessCmd, ChildProcess, SHA256
+          IOCs, InitiatingProcess, InitiatingProcessCmd, ChildProcess, SHA256, Hits
 | sort by RiskScore desc, TimeGenerated desc
 ```
