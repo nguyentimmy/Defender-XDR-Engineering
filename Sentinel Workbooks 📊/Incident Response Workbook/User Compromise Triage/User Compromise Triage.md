@@ -34,157 +34,277 @@ This unifies them into one timeline. Use it when a user is named in a phishing r
 
 ```kql
 // ============================================================
-// USER COMPROMISE TRIAGE - Workbook (Parameterized)
+// USER COMPROMISE IR 1.0 - Workbook (Parameterized, Risk-Scored)
+// Parameters: {UserPrincipalName} (empty = all users), {TimeRange}
 // ============================================================
-// MITRE ATT&CK:
-//   T1098.005 - Account Manipulation: Device Registration
-//   T1556.006 - Modify Authentication Process: MFA
-//   T1114.003 - Email Collection: Email Forwarding Rule
-//   T1078.004 - Valid Accounts: Cloud Accounts
-//   T1550.001 - Application Access Token
-//   T1114.002 - Remote Email Collection
-// ============================================================
-// PARAMETERS: {UserPrincipalName}, {TimeRange}
-// ============================================================
-let TargetUser = "{UserPrincipalName}";
-let InternalDomains = dynamic([
-  "yourdomain1.com", "yourdomain2.com"
+let TargetUser = tolower(trim(" ", "{UserPrincipalName}"));
+let UserLocal  = tostring(split(TargetUser, "@")[0]);
+let UserDomain = tostring(split(TargetUser, "@")[1]);
+let LegacyClients = dynamic([
+    "Exchange ActiveSync", "IMAP4", "POP3", "Authenticated SMTP", "Other clients",
+    "Exchange Web Services", "AutoDiscover", "Offline Address Book",
+    "Outlook Anywhere (RPC over HTTP)", "Exchange Online PowerShell"
 ]);
-let MaliciousIPs = materialize(
-    union
-    (externaldata(ip:string)[@"https://feodotracker.abuse.ch/downloads/ipblocklist.txt"] with (format="txt")
-        | where ip matches regex @"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"),
-    (externaldata(ip:string)[@"https://check.torproject.org/torbulkexitlist"] with (format="txt")
-        | where ip matches regex @"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
-    | distinct ip
-);
+let PrivRoles = dynamic([
+    "Global Administrator", "Privileged Role Administrator", "Privileged Authentication Administrator",
+    "Exchange Administrator", "Security Administrator", "Application Administrator",
+    "Cloud Application Administrator", "User Administrator", "Authentication Administrator",
+    "SharePoint Administrator", "Conditional Access Administrator", "Intune Administrator"
+]);
+let RiskyScopes = dynamic([
+    "Mail.Read", "Mail.ReadWrite", "Mail.Send", "MailboxSettings.ReadWrite", "Files.ReadWrite.All",
+    "Files.Read.All", "Sites.ReadWrite.All", "full_access_as_user", "EWS.AccessAsUser.All",
+    "Directory.ReadWrite.All", "User.ReadWrite.All", "Contacts.Read"
+]);
+let HighRiskDetections = dynamic([
+    "anomalousToken", "tokenIssuerAnomaly", "attackerinTheMiddle", "maliciousIPAddress",
+    "leakedCredentials", "passwordSpray", "mcasSuspiciousInboxManipulationRules",
+    "investigationsThreatIntelligence", "suspiciousAPITraffic", "mcasImpossibleTravel"
+]);
+// ---------- Shared sources ----------
+let Sign = SigninLogs
+    | where TimeGenerated {TimeRange}
+    | where isempty(TargetUser) or tolower(UserPrincipalName) == TargetUser
+    | extend Country = tostring(LocationDetails.countryOrRegion),
+             Loc = strcat(tostring(LocationDetails.city), ", ", tostring(LocationDetails.countryOrRegion)),
+             Lat = todouble(LocationDetails.geoCoordinates.latitude),
+             Lon = todouble(LocationDetails.geoCoordinates.longitude),
+             Dev = tostring(DeviceDetail.displayName),
+             OSBrowser = strcat(tostring(DeviceDetail.operatingSystem), " | ", tostring(split(tostring(DeviceDetail.browser), " ")[0]));
+let OkSign = Sign | where ResultType == "0";
+let Baseline = SigninLogs
+    | where TimeGenerated between (ago(30d) .. {TimeRange:start})
+    | where isempty(TargetUser) or tolower(UserPrincipalName) == TargetUser
+    | where ResultType == "0"
+    | summarize BaseCountries = make_set(tostring(LocationDetails.countryOrRegion), 200),
+                BaseOSBrowser = make_set(strcat(tostring(DeviceDetail.operatingSystem), " | ", tostring(split(tostring(DeviceDetail.browser), " ")[0])), 200)
+        by UserPrincipalName;
+let Audit = AuditLogs
+    | where TimeGenerated {TimeRange}
+    | extend Target  = tolower(tostring(TargetResources[0].userPrincipalName)),
+             Actor   = tolower(coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))),
+             ActorIP = tostring(InitiatedBy.user.ipAddress)
+    | where isempty(TargetUser) or Target == TargetUser or Actor == TargetUser;
+let Office = OfficeActivity
+    | where TimeGenerated {TimeRange}
+    | extend P = strcat(tostring(Parameters), " ", tostring(column_ifexists("OperationProperties", ""))),
+             CleanIP = coalesce(extract(@"(\d+\.\d+\.\d+\.\d+)", 1, ClientIP), ClientIP)
+    | where isempty(TargetUser) or tolower(UserId) == TargetUser or P has TargetUser;
+let TI = union isfuzzy=true
+    (ThreatIntelligenceIndicator | where TimeGenerated > ago(30d) | where isnotempty(NetworkIP)
+        | summarize TIDesc = take_any(strcat(ThreatType, " ", Description)) by IP = NetworkIP),
+    (ThreatIntelIndicators | where TimeGenerated > ago(30d) | where ObservableKey has "ipv4"
+        | summarize TIDesc = take_any(tostring(Data.description)) by IP = ObservableValue)
+    | summarize TIDesc = take_any(TIDesc) by IP;
+// ============================================================
 union isfuzzy=true
-// ============================================================
-// 1. NEW MFA / AUTH METHODS REGISTERED
-// ============================================================
-(
-    AuditLogs
+// ---------- 🚨 Risky Sign-in ----------
+(Sign
+    | where RiskLevelDuringSignIn in ("medium", "high") or RiskState == "atRisk"
+    | project TimeGenerated, Signal = "🚨 Risky Sign-in",
+        RiskScore = toint(iff(RiskLevelDuringSignIn == "high", 9, 7) - iff(ResultType == "0", 0, 2)),
+        Account = UserPrincipalName, IPAddress, Location = Loc, DeviceName = Dev, App = AppDisplayName,
+        Detail = strcat("Risk: ", RiskLevelDuringSignIn, " | State: ", RiskState, " | Events: ", tostring(RiskEventTypes_V2),
+                        " | Result: ", iff(ResultType == "0", "Success", ResultDescription)),
+        UserAgent, EventCount = tolong(1)),
+// ---------- 🛡️ Identity Protection Detection ----------
+(AADUserRiskEvents
     | where TimeGenerated {TimeRange}
-    | where OperationName has_any (
-        "Register security info", "Add security info",
-        "User registered security info", "Admin registered security info",
-        "Add authentication method", "Register device", "Update StrongAuthentication")
-    | where tostring(TargetResources) has TargetUser or tostring(InitiatedBy) has TargetUser
-    | project TimeGenerated, Signal = "🔐 New MFA/Auth Method", User = TargetUser,
-              IPAddress = tostring(InitiatedBy.user.ipAddress),
-              RawOperation = OperationName,
-              Detail = strcat(OperationName, " | ", tostring(ResultDescription))
-),
-// ============================================================
-// 2. MFA REMOVED / PASSWORD RESET - takeover eviction moves
-// ============================================================
-(
-    AuditLogs
+    | where isempty(TargetUser) or tolower(UserPrincipalName) == TargetUser
+    | extend L = parse_json(tostring(Location))
+    | project TimeGenerated, Signal = "🛡️ Identity Protection Detection",
+        RiskScore = toint(case(RiskEventType in (HighRiskDetections), 9, RiskLevel == "high", 8, RiskLevel == "medium", 6, 4)),
+        Account = UserPrincipalName, IPAddress = IpAddress,
+        Location = strcat(tostring(L.city), ", ", tostring(L.countryOrRegion)), DeviceName = "", App = Source,
+        Detail = strcat(RiskEventType, " | Level: ", RiskLevel, " | State: ", RiskState, " | ", DetectionTimingType),
+        UserAgent = "", EventCount = tolong(1)),
+// ---------- 🔑 Brute Force / Spray ----------
+(Sign
+    | where ResultType in ("50126", "50053", "50034", "50056")
+    | summarize Failures = count(), FirstFail = min(TimeGenerated), Codes = make_set(ResultType, 10)
+        by UserPrincipalName, IPAddress, Loc, bin(TimeGenerated, 1h)
+    | where Failures >= 5
+    | join kind=leftouter (OkSign | summarize SuccessTime = min(TimeGenerated), SuccessApp = take_any(AppDisplayName) by UserPrincipalName, IPAddress)
+        on UserPrincipalName, IPAddress
+    | extend Succeeded = isnotempty(SuccessTime) and SuccessTime >= FirstFail
+    | project TimeGenerated, Signal = "🔑 Brute Force / Spray", RiskScore = toint(iff(Succeeded, 9, 6)),
+        Account = UserPrincipalName, IPAddress, Location = Loc, DeviceName = "", App = iff(Succeeded, SuccessApp, ""),
+        Detail = strcat(Failures, " failed logons (", strcat_array(Codes, ","), ")",
+                        iff(Succeeded, strcat(" -> SUCCESS from same IP at ", format_datetime(SuccessTime, "yyyy-MM-dd HH:mm")), "")),
+        UserAgent = "", EventCount = tolong(Failures)),
+// ---------- 📲 MFA Fatigue ----------
+(Sign
+    | where ResultType == "500121"
+    | summarize Denied = count() by UserPrincipalName, IPAddress, Loc, AppDisplayName, bin(TimeGenerated, 1h)
+    | where Denied >= 3
+    | project TimeGenerated, Signal = "📲 MFA Fatigue", RiskScore = toint(iff(Denied >= 10, 8, 7)),
+        Account = UserPrincipalName, IPAddress, Location = Loc, DeviceName = "", App = AppDisplayName,
+        Detail = strcat(Denied, " MFA challenges failed/denied in 1h"), UserAgent = "", EventCount = tolong(Denied)),
+// ---------- ✈️ Impossible Travel ----------
+(OkSign
+    | where isnotempty(Lat) and isnotempty(Lon)
+    | project TimeGenerated, UserPrincipalName, IPAddress, Loc, Lat, Lon, AppDisplayName, UserAgent, Dev
+    | sort by UserPrincipalName asc, TimeGenerated asc
+    | extend PUser = prev(UserPrincipalName), PTime = prev(TimeGenerated), PLat = prev(Lat), PLon = prev(Lon), PIP = prev(IPAddress), PLoc = prev(Loc)
+    | where PUser == UserPrincipalName and PIP != IPAddress
+    | extend Km = geo_distance_2points(PLon, PLat, Lon, Lat) / 1000.0,
+             Mins = datetime_diff("minute", TimeGenerated, PTime)
+    | extend Kmh = Km / max_of(todouble(Mins) / 60.0, 0.05)
+    | where Km > 500 and Kmh > 900
+    | project TimeGenerated, Signal = "✈️ Impossible Travel", RiskScore = toint(8),
+        Account = UserPrincipalName, IPAddress, Location = Loc, DeviceName = Dev, App = AppDisplayName,
+        Detail = strcat(PLoc, " (", PIP, ") -> ", Loc, " (", IPAddress, ") | ", round(Km), " km in ", Mins, " min"),
+        UserAgent, EventCount = tolong(1)),
+// ---------- 🌍 New Country Sign-in (vs 30d baseline) ----------
+(OkSign
+    | join kind=inner Baseline on UserPrincipalName
+    | where isnotempty(Country) and not(set_has_element(BaseCountries, Country))
+    | project TimeGenerated, Signal = "🌍 New Country Sign-in", RiskScore = toint(7),
+        Account = UserPrincipalName, IPAddress, Location = Loc, DeviceName = Dev, App = AppDisplayName,
+        Detail = strcat("First sign-in from ", Country, " in 30 days | Known: ", strcat_array(BaseCountries, ", ")),
+        UserAgent, EventCount = tolong(1)),
+// ---------- 💻 New OS / Browser (vs 30d baseline) ----------
+(OkSign
+    | join kind=inner Baseline on UserPrincipalName
+    | where OSBrowser != " | " and not(set_has_element(BaseOSBrowser, OSBrowser))
+    | project TimeGenerated, Signal = "💻 New OS / Browser", RiskScore = toint(4),
+        Account = UserPrincipalName, IPAddress, Location = Loc, DeviceName = Dev, App = AppDisplayName,
+        Detail = strcat("New client: ", OSBrowser), UserAgent, EventCount = tolong(1)),
+// ---------- 🕰️ Legacy Auth ----------
+(Sign
+    | where ClientAppUsed in (LegacyClients)
+    | project TimeGenerated, Signal = "🕰️ Legacy Auth", RiskScore = toint(iff(ResultType == "0", 6, 3)),
+        Account = UserPrincipalName, IPAddress, Location = Loc, DeviceName = Dev, App = AppDisplayName,
+        Detail = strcat("Client: ", ClientAppUsed, " | Result: ", iff(ResultType == "0", "Success", ResultDescription)),
+        UserAgent, EventCount = tolong(1)),
+// ---------- ☠️ Sign-in from TI IP ----------
+(Sign
+    | join kind=inner TI on $left.IPAddress == $right.IP
+    | project TimeGenerated, Signal = "☠️ Sign-in from Malicious IP", RiskScore = toint(iff(ResultType == "0", 9, 7)),
+        Account = UserPrincipalName, IPAddress, Location = Loc, DeviceName = Dev, App = AppDisplayName,
+        Detail = strcat("TI: ", TIDesc, " | Result: ", iff(ResultType == "0", "Success", ResultDescription)),
+        UserAgent, EventCount = tolong(1)),
+// ---------- 📱 MFA / Auth Method Change ----------
+(Audit
+    | where OperationName has_any ("security info", "authentication method", "StrongAuthentication")
+        or (OperationName == "Update user" and tostring(TargetResources) has "StrongAuthentication")
+    | project TimeGenerated, Signal = "📱 MFA / Auth Method Change",
+        RiskScore = toint(iff(OperationName has_any ("deleted", "delete", "removed"), 8, 7)),
+        Account = coalesce(Target, Actor), IPAddress = ActorIP, Location = "", DeviceName = "", App = LoggedByService,
+        Detail = strcat(OperationName, " | By: ", Actor, " | Result: ", Result), UserAgent = "", EventCount = tolong(1)),
+// ---------- 🔐 Password Reset / Change ----------
+(Audit
+    | where OperationName has "password" and OperationName !has "security info"
+    | project TimeGenerated, Signal = "🔐 Password Reset / Change",
+        RiskScore = toint(iff(isnotempty(Target) and Actor != Target, 6, 4)),
+        Account = coalesce(Target, Actor), IPAddress = ActorIP, Location = "", DeviceName = "", App = LoggedByService,
+        Detail = strcat(OperationName, " | By: ", Actor, " | Result: ", Result), UserAgent = "", EventCount = tolong(1)),
+// ---------- 👑 Role Assignment ----------
+(Audit
+    | where OperationName has "member to role"
+    | mv-apply mp = TargetResources[0].modifiedProperties on (
+        summarize Role = take_anyif(trim(@'"', tostring(mp.newValue)), tostring(mp.displayName) == "Role.DisplayName"))
+    | project TimeGenerated, Signal = "👑 Role Assignment", RiskScore = toint(iff(Role in (PrivRoles), 9, 7)),
+        Account = Target, IPAddress = ActorIP, Location = "", DeviceName = "", App = LoggedByService,
+        Detail = strcat(OperationName, " | Role: ", Role, " | By: ", Actor), UserAgent = "", EventCount = tolong(1)),
+// ---------- 🔓 OAuth Consent ----------
+(Audit
+    | where OperationName in ("Consent to application", "Add delegated permission grant", "Add app role assignment grant to user")
+    | mv-apply mp = TargetResources[0].modifiedProperties on (
+        summarize Perms = take_anyif(tostring(mp.newValue), tostring(mp.displayName) in ("ConsentAction.Permissions", "DelegatedPermissionGrant.Scope")),
+                  IsAdmin = take_anyif(tostring(mp.newValue), tostring(mp.displayName) == "ConsentContext.IsAdminConsent"))
+    | project TimeGenerated, Signal = "🔓 OAuth Consent", RiskScore = toint(iff(Perms has_any (RiskyScopes), 9, 7)),
+        Account = Actor, IPAddress = ActorIP, Location = "", DeviceName = "", App = tostring(TargetResources[0].displayName),
+        Detail = strcat(OperationName, " | AdminConsent: ", IsAdmin, " | Scopes: ", substring(Perms, 0, 300)), UserAgent = "", EventCount = tolong(1)),
+// ---------- 🧩 App Credential / Owner Added ----------
+(Audit
+    | where OperationName has_any ("Add service principal credentials", "Certificates and secrets management", "Add owner to application", "Add owner to service principal")
+    | project TimeGenerated, Signal = "🧩 App Credential / Owner Added", RiskScore = toint(8),
+        Account = Actor, IPAddress = ActorIP, Location = "", DeviceName = "", App = tostring(TargetResources[0].displayName),
+        Detail = strcat(OperationName, " | Target: ", tostring(TargetResources[0].displayName)), UserAgent = "", EventCount = tolong(1)),
+// ---------- 📧 Inbox Rule / Forwarding ----------
+(Office
+    | where Operation in~ ("New-InboxRule", "Set-InboxRule", "Enable-InboxRule", "UpdateInboxRules", "Set-Mailbox")
+    | where Operation !~ "Set-Mailbox" or P has_any ("ForwardingSmtpAddress", "ForwardingAddress", "DeliverToMailboxAndForward")
+    | extend Fwd = P has_any ("ForwardTo", "RedirectTo", "ForwardAsAttachmentTo", "ForwardingSmtpAddress", "ForwardingAddress"),
+             Del = P has_any ("DeleteMessage", "SoftDeleteMessage"),
+             Hide = P has_any ("RSS", "Conversation History", "Archive", "Junk"),
+             MarkRead = P has "MarkAsRead"
+    | project TimeGenerated, Signal = "📧 Inbox Rule / Forwarding",
+        RiskScore = toint(min_of(10, 5 + iff(Fwd, 3, 0) + iff(Del, 2, 0) + iff(Hide, 2, 0))),
+        Account = UserId, IPAddress = CleanIP, Location = "", DeviceName = "", App = "Exchange",
+        Detail = strcat(Operation, " | ", iff(Fwd, "FORWARD ", ""), iff(Del, "DELETE ", ""), iff(Hide, "HIDE-FOLDER ", ""),
+                        iff(MarkRead, "MARK-READ ", ""), "| ", substring(P, 0, 300)),
+        UserAgent = "", EventCount = tolong(1)),
+// ---------- 👥 Mailbox Delegation / SendAs ----------
+(Office
+    | where Operation in~ ("Add-MailboxPermission", "Add-RecipientPermission", "Add-MailboxFolderPermission", "Set-MailboxFolderPermission", "Add-ADPermission")
+    | project TimeGenerated, Signal = "👥 Mailbox Delegation / SendAs",
+        RiskScore = toint(iff(P has_any ("FullAccess", "SendAs"), 7, 6)),
+        Account = UserId, IPAddress = CleanIP, Location = "", DeviceName = "", App = "Exchange",
+        Detail = strcat(Operation, " | ", substring(P, 0, 300)), UserAgent = "", EventCount = tolong(1)),
+// ---------- 📦 Mailbox Export / Content Search ----------
+(Office
+    | where Operation in~ ("New-MailboxExportRequest", "New-ComplianceSearch", "Start-ComplianceSearch", "New-ComplianceSearchAction", "New-MailboxSearch", "Search-Mailbox")
+    | project TimeGenerated, Signal = "📦 Mailbox Export / Search", RiskScore = toint(8),
+        Account = UserId, IPAddress = CleanIP, Location = "", DeviceName = "", App = "Exchange",
+        Detail = strcat(Operation, " | ", substring(P, 0, 300)), UserAgent = "", EventCount = tolong(1)),
+// ---------- 🗑️ Mass Mail Delete ----------
+(Office
+    | where Operation in ("SoftDelete", "HardDelete", "MoveToDeletedItems")
+    | summarize Cnt = count(), Ops = make_set(Operation, 3) by UserId, CleanIP, bin(TimeGenerated, 1h)
+    | where Cnt >= 50
+    | project TimeGenerated, Signal = "🗑️ Mass Mail Delete", RiskScore = toint(iff(set_has_element(Ops, "HardDelete"), 7, 6)),
+        Account = UserId, IPAddress = CleanIP, Location = "", DeviceName = "", App = "Exchange",
+        Detail = strcat(Cnt, " delete operations in 1h (", strcat_array(Ops, ","), ")"), UserAgent = "", EventCount = tolong(Cnt)),
+// ---------- ☁️ Mass SharePoint / OneDrive Download ----------
+(Office
+    | where Operation in ("FileDownloaded", "FileSyncDownloadedFull")
+    | summarize Files = dcount(OfficeObjectId), Cnt = count(), Sample = make_set(SourceFileName, 5) by UserId, CleanIP, bin(TimeGenerated, 1h)
+    | where Files >= 50
+    | project TimeGenerated, Signal = "☁️ Mass Cloud Download", RiskScore = toint(iff(Files >= 200, 8, 6)),
+        Account = UserId, IPAddress = CleanIP, Location = "", DeviceName = "", App = "SharePoint/OneDrive",
+        Detail = strcat(Files, " files in 1h | e.g. ", strcat_array(Sample, ", ")), UserAgent = "", EventCount = tolong(Cnt)),
+// ---------- 🔗 External / Anonymous Sharing ----------
+(Office
+    | where Operation in ("AnonymousLinkCreated", "SharingInvitationCreated", "SecureLinkCreated", "AddedToSecureLink")
+    | extend TType = tostring(column_ifexists("TargetUserOrGroupType", "")), TName = tostring(column_ifexists("TargetUserOrGroupName", ""))
+    | where Operation == "AnonymousLinkCreated" or TType =~ "Guest" or TName has "#ext#"
+    | summarize Cnt = count(), Sample = make_set(SourceFileName, 5), To = make_set(TName, 5) by UserId, CleanIP, Operation, bin(TimeGenerated, 1h)
+    | project TimeGenerated, Signal = "🔗 External / Anonymous Sharing", RiskScore = toint(iff(Operation == "AnonymousLinkCreated", 6, 5)),
+        Account = UserId, IPAddress = CleanIP, Location = "", DeviceName = "", App = "SharePoint/OneDrive",
+        Detail = strcat(Operation, " x", Cnt, " | Files: ", strcat_array(Sample, ", "), " | To: ", strcat_array(To, ", ")),
+        UserAgent = "", EventCount = tolong(Cnt)),
+// ---------- 🖥️ Device Logons by User ----------
+(DeviceLogonEvents
     | where TimeGenerated {TimeRange}
-    | where OperationName has_any (
-        "Delete authentication method", "User deleted security info",
-        "Admin deleted security info", "Reset password (self-service)",
-        "Reset user password", "Change user password", "Unregister device")
-    | where tostring(TargetResources) has TargetUser or tostring(InitiatedBy) has TargetUser
-    | project TimeGenerated, Signal = "🔓 MFA Removed / Password Reset", User = TargetUser,
-              IPAddress = tostring(InitiatedBy.user.ipAddress),
-              RawOperation = OperationName,
-              Detail = strcat(OperationName, " | ", tostring(ResultDescription))
-),
-// ============================================================
-// 3. MAILBOX FORWARDING / INBOX RULES
-// ============================================================
-(
-    OfficeActivity
+    | where isnotempty(UserLocal) and tolower(AccountName) == UserLocal
+    | summarize Success = countif(ActionType == "LogonSuccess"), Fail = countif(ActionType == "LogonFailed")
+        by DeviceName, LogonType, RemoteIP, RemoteIPType, AccountDomain, AccountName, bin(TimeGenerated, 1h)
+    | extend RiskScore = toint(case(RemoteIPType == "Public" and Success > 0, 7, Fail >= 10, 6, LogonType == "RemoteInteractive", 4, 2))
+    | project TimeGenerated, Signal = "🖥️ Device Logon", RiskScore,
+        Account = strcat(AccountDomain, "\\", AccountName), IPAddress = RemoteIP, Location = RemoteIPType, DeviceName,
+        App = LogonType, Detail = strcat(LogonType, " | Success: ", Success, " | Failed: ", Fail),
+        UserAgent = "", EventCount = tolong(Success + Fail)),
+// ---------- 🚩 Security Alerts for User ----------
+(SecurityAlert
     | where TimeGenerated {TimeRange}
-    | where UserId =~ TargetUser
-    | where Operation in ("New-InboxRule", "Set-InboxRule", "UpdateInboxRules",
-        "Set-Mailbox", "Set-MailboxAutoReplyConfiguration")
-    | extend Params = tostring(Parameters)
-    | where Params has_any ("ForwardTo", "ForwardAsAttachmentTo", "RedirectTo",
-        "ForwardingSmtpAddress", "DeliverToMailboxAndForward")
-    | extend ForwardsExternal = not(Params has_any (InternalDomains))
-    | project TimeGenerated, Signal = "📬 Forwarding/Inbox Rule", User = UserId,
-              IPAddress = ClientIP, RawOperation = Operation,
-              Detail = strcat(iff(ForwardsExternal, "EXTERNAL TARGET | ", ""),
-                             Operation, " | ", substring(Params, 0, 250))
-),
+    | where isempty(TargetUser) or tolower(Entities) has TargetUser or tolower(Entities) contains strcat('"name":"', UserLocal, '"')
+    | summarize arg_max(TimeGenerated, *) by SystemAlertId
+    | project TimeGenerated, Signal = "🚩 Security Alert",
+        RiskScore = toint(case(AlertSeverity == "High", 9, AlertSeverity == "Medium", 7, AlertSeverity == "Low", 5, 3)),
+        Account = iff(isempty(TargetUser), CompromisedEntity, TargetUser),
+        IPAddress = extract(@'"Address":"([^"]+)"', 1, Entities), Location = "",
+        DeviceName = extract(@'"HostName":"([^"]+)"', 1, Entities), App = ProductName,
+        Detail = strcat(AlertName, " | ", Status, " | ", substring(Description, 0, 200)), UserAgent = "", EventCount = tolong(1))
 // ============================================================
-// 4. RISKY / ANOMALOUS SIGN-INS
-// ============================================================
-(
-    SigninLogs
-    | where TimeGenerated {TimeRange}
-    | where UserPrincipalName =~ TargetUser
-    | where RiskLevelDuringSignIn in ("high", "medium")
-        or RiskState in ("atRisk", "confirmedCompromised")
-        or (ResultType == 0 and RiskLevelAggregated in ("high", "medium"))
-    | project TimeGenerated, Signal = "⚠️ Risky Sign-in", User = UserPrincipalName,
-              IPAddress, RawOperation = tostring(RiskLevelDuringSignIn),
-              Detail = strcat("Risk: ", RiskLevelDuringSignIn, " | ", AppDisplayName,
-                             " | ", tostring(LocationDetails.countryOrRegion))
-),
-// ============================================================
-// 5. RARE-COUNTRY SIGN-INS (baseline is per-user, not global)
-// ============================================================
-(
-    SigninLogs
-    | where TimeGenerated {TimeRange}
-    | where UserPrincipalName =~ TargetUser
-    | where ResultType == 0
-    | extend Country = tostring(LocationDetails.countryOrRegion)
-    | where isnotempty(Country)
-    | summarize CountryCount = count(), LastSeen = max(TimeGenerated),
-                IPs = make_set(IPAddress, 5) by Country
-    | where CountryCount < 5
-    | project TimeGenerated = LastSeen, Signal = "🌍 Rare Country Sign-in", User = TargetUser,
-              IPAddress = tostring(IPs[0]), RawOperation = Country,
-              Detail = strcat("Rare sign-in country: ", Country, " (", CountryCount, " sign-ins)")
-),
-// ============================================================
-// 6. SIGN-INS FROM KNOWN-MALICIOUS IPs
-// ============================================================
-(
-    SigninLogs
-    | where TimeGenerated {TimeRange}
-    | where UserPrincipalName =~ TargetUser
-    | where IPAddress in (MaliciousIPs)
-    | project TimeGenerated, Signal = "🚨 Malicious-IP Sign-in", User = UserPrincipalName,
-              IPAddress, RawOperation = tostring(ResultType),
-              Detail = strcat("Sign-in from flagged IP | Result: ", ResultType, " | ",
-                             AppDisplayName, " | ", tostring(LocationDetails.countryOrRegion))
-),
-// ============================================================
-// 7. OAUTH APP CONSENT GRANTS
-// ============================================================
-(
-    AuditLogs
-    | where TimeGenerated {TimeRange}
-    | where OperationName has_any ("Consent to application", "Add OAuth2PermissionGrant",
-        "Add delegated permission grant")
-    | where tostring(InitiatedBy) has TargetUser or tostring(TargetResources) has TargetUser
-    | project TimeGenerated, Signal = "🔗 OAuth App Consent", User = TargetUser,
-              IPAddress = tostring(InitiatedBy.user.ipAddress),
-              RawOperation = OperationName,
-              Detail = strcat("OAuth consent: ", OperationName)
-),
-// ============================================================
-// 8. MAILBOX EXPORT / eDISCOVERY - bulk mail exfil
-// ============================================================
-(
-    OfficeActivity
-    | where TimeGenerated {TimeRange}
-    | where UserId =~ TargetUser or tostring(Parameters) has TargetUser
-    | where Operation has_any ("New-MailboxExportRequest", "New-ComplianceSearch",
-        "New-ComplianceSearchAction", "Set-ComplianceSearch",
-        "SearchExportDownloaded", "New-MailboxSearch")
-    | project TimeGenerated, Signal = "📤 Mailbox Export / eDiscovery", User = UserId,
-              IPAddress = ClientIP, RawOperation = Operation,
-              Detail = strcat(Operation, " | ", substring(tostring(Parameters), 0, 250))
-)
-// ============================================================
-// UNIFIED TIMELINE
-// ============================================================
-| project TimeGenerated, Signal, User, IPAddress, RawOperation, Detail
-| sort by TimeGenerated desc
+| summarize Hits = sum(EventCount)
+    by TimeGenerated = bin(TimeGenerated, 1m), Signal, RiskScore, Account, IPAddress, Location, DeviceName, App, Detail, UserAgent
+| extend Severity = case(RiskScore >= 9, "Critical", RiskScore >= 7, "High", RiskScore >= 5, "Medium", RiskScore >= 3, "Low", "Informational")
+| extend IPs  = extract_all(@"(\b\d+\.\d+\.\d+\.\d+\b)", strcat(IPAddress, " ", Detail)),
+         Doms = extract_all(@"@([A-Za-z0-9.-]+\.[A-Za-z]+)", Detail)
+| extend IPs = iff(isnull(IPs), dynamic([]), IPs), Doms = iff(isnull(Doms), dynamic([]), Doms)
+| extend IOCs = strcat_array(set_difference(set_union(IPs, Doms), pack_array(UserDomain)), ", ")
+| project TimeGenerated, Severity, RiskScore, Hits, Signal, Account, IPAddress, Location, DeviceName, App, Detail, IOCs, UserAgent
+| sort by RiskScore desc, TimeGenerated desc
 ```
