@@ -1,4 +1,4 @@
-# EDR Health 1.0
+# AV Dashboard
 
 Sentinel workbook for Microsoft Defender antivirus detections, EDR tampering and sensor health. It shows what AV caught, whether the threat was remediated, attempts to blind the EDR, and which devices aren't reporting.
 
@@ -16,6 +16,8 @@ Sentinel workbook for Microsoft Defender antivirus detections, EDR tampering and
 | 🥷 EDR Evasions | Grid | BYOVD drivers, EDR-killer tools, EDR process/service kills, Defender tampering, Safe Mode abuse, log tampering |
 | 💓 Defender Health | Grid | Onboarded devices whose sensor isn't Active (an empty result means everything is healthy) |
 | 📊 Sensor Coverage Tiles | Tiles | Onboarded, active, inactive, impaired devices and coverage % |
+| 🥧 Onboarding Status | Pie chart | Onboarded vs. devices found by device discovery that aren't onboarded |
+| 🧩 Onboarded vs Not Onboarded | Pie chart | VMs sending Azure Monitor heartbeats compared against Defender's onboarded devices |
 | 💤 Stale Devices | Grid | Devices that reported in the last 30 days but have been silent for 7+ days |
 
 **Notes**
@@ -392,6 +394,40 @@ union
 | sort by Order asc
 | project Metric, Value
 ```
+
+## 🥧 Onboarding Status
+Pie chart. Colors: Onboarded green, Not Onboarded orange, Unsupported red, Insufficient Info gray.
+
+```kql
+DeviceInfo
+| where TimeGenerated {TimeRange}
+| summarize arg_max(TimeGenerated, OnboardingStatus) by DeviceId
+| extend Status = case(
+    OnboardingStatus == "Onboarded", "✅ Onboarded",
+    OnboardingStatus == "Can be onboarded", "⚠️ Not Onboarded",
+    OnboardingStatus == "Unsupported", "⛔ Unsupported",
+    "❔ Insufficient Info")
+| summarize Devices = count() by Status
+```
+
+"Not Onboarded" only shows devices that Defender's device discovery found on the network. With discovery off, or nothing unmanaged on the network, this pie is all Onboarded.
+
+## 🧩 Onboarded vs Not Onboarded
+Pie chart. Colors: Onboarded green, Not Onboarded orange.
+
+```kql
+let MDE = DeviceInfo
+    | where TimeGenerated > ago(30d)
+    | where OnboardingStatus == "Onboarded"
+    | summarize by Name = tolower(tostring(split(DeviceName, ".")[0]));
+Heartbeat
+| where TimeGenerated > ago(30d)
+| summarize arg_max(TimeGenerated, OSType) by Name = tolower(tostring(split(Computer, ".")[0]))
+| extend Status = iff(Name in (MDE), "✅ Onboarded", "⚠️ Not Onboarded")
+| summarize Devices = count() by Status
+```
+
+Requires the Azure Monitor Agent on the VMs. Devices are matched on short hostname, since Defender sometimes reports the full domain name. VMs without the agent won't appear.
 
 ## 💤 Stale Devices
 Grid (fixed 30-day lookback, ignores `TimeRange`)
