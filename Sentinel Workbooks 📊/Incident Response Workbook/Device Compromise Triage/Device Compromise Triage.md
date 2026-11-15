@@ -466,17 +466,31 @@ union isfuzzy=true
     | where isempty(TargetDevice) or DeviceName has TargetDevice
     | where ActionType in (
         "AntivirusDetection", "AntivirusDetectionNotBlocked",
-        "SecurityLogCleared", "AsrLsassCredentialTheftBlocked",
-        "ExploitGuardNetworkProtectionBlocked", "SmartScreenUrlWarning",
-        "TamperingAttempt")
+        "SecurityLogCleared", "ExploitGuardNetworkProtectionBlocked",
+        "SmartScreenUrlWarning", "TamperingAttempt",
+        "ControlledFolderAccessViolationBlocked")
+        or (ActionType startswith "Asr" and ActionType endswith "Blocked")
+    | extend AF = parse_json(AdditionalFields)
+    | extend Remediated = tostring(AF.WasRemediated)
     | project TimeGenerated, Signal = "🛡️ Defender Detection", DeviceName,
               Account = InitiatingProcessAccountName,
               InitiatingProcess = InitiatingProcessFileName,
               InitiatingProcessCmd = InitiatingProcessCommandLine,
               ChildProcess = FileName,
               SHA256,
-              Detail = strcat(ActionType, " | ",
-                             substring(tostring(AdditionalFields), 0, 200))
+              ThreatName = case(
+                  ActionType startswith "Asr",
+                      strcat("ASR: ", replace_regex(replace_regex(ActionType, @"^Asr", ""), @"Blocked$", "")),
+                  ActionType startswith "ExploitGuard", "Network Protection",
+                  ActionType startswith "ControlledFolderAccess", "Controlled Folder Access",
+                  tostring(AF.ThreatName)),
+              Action = case(
+                  ActionType startswith "Antivirus" and Remediated =~ "true", "✅ AV Blocked/Remediated",
+                  ActionType startswith "Antivirus", "⚠️ AV Detected - NOT remediated",
+                  ActionType endswith "Blocked", "✅ Blocked",
+                  ActionType endswith "Warning", "⚠️ Warned",
+                  ""),
+              Detail = strcat(ActionType, " | ", substring(FolderPath, 0, 180))
 ),
 // ============================================================
 // AntivirusReport (rescans of already-known files) - one row per device per hour
@@ -498,7 +512,7 @@ union isfuzzy=true
               ChildProcess = "",
               SHA256 = "",
               Detail = strcat("AntivirusReport | ", tostring(Files), " file(s) rescanned: ",
-                             substring(tostring(Names), 0, 150))
+                             substring(strcat_array(Names, ", "), 0, 150))
 ),
 // ============================================================
 // v4.1 MDE ALERTS -- custom detection rules + built-in EDR/AV alerts
@@ -516,7 +530,9 @@ union isfuzzy=true
         | summarize Account = take_anyif(AccountName, isnotempty(AccountName)),
                     Cmd = take_anyif(ProcessCommandLine, isnotempty(ProcessCommandLine)),
                     Proc = take_anyif(FileName, isnotempty(FileName)),
-                    Hash = take_anyif(SHA256, isnotempty(SHA256))
+                    Hash = take_anyif(SHA256, isnotempty(SHA256)),
+                    Threat = take_anyif(ThreatFamily, isnotempty(ThreatFamily)),
+                    Path = take_anyif(FolderPath, isnotempty(FolderPath))
                     by AlertId, DeviceName
     ) on AlertId
     | project TimeGenerated,
@@ -530,6 +546,7 @@ union isfuzzy=true
               InitiatingProcessCmd = tostring(Cmd),
               ChildProcess = tostring(Proc),
               SHA256 = tostring(Hash),
+              ThreatName = tostring(Threat),
               Detail = strcat(DetectionSource, " | ", Title)
 ),
 // ============================================================
@@ -649,6 +666,11 @@ union isfuzzy=true
             and (FileName in~ (".bash_history", ".zsh_history", "auth.log", "secure",
                                "syslog", "messages", "wtmp", "btmp", "lastlog", "audit.log")
                  or FolderPath startswith "/var/log")
+    // apt / unattended-upgrades / logrotate rotate and delete their own logs - not a wipe
+    | extend IsLogWipe = IsLogWipe
+            and not(InitiatingProcessCommandLine has_any ("unattended-upgrade", "logrotate")
+                    or FolderPath startswith "/var/log/apt/"
+                    or InitiatingProcessFileName in~ ("logrotate", "dpkg", "apt", "apt-get"))
     | where (IsPersistPath and ActionType != "FileDeleted") or IsLogWipe
     | where not(FileName == "mdatp" and FolderPath startswith "/etc/cron.d")
     | project TimeGenerated,
@@ -660,7 +682,7 @@ union isfuzzy=true
               ChildProcess = "",
               SHA256 = InitiatingProcessSHA256,
               Detail = strcat(iff(IsLogWipe, "Linux log/history wipe: ", "Linux persist file: "),
-                             ActionType, " ", FolderPath, "/", FileName)
+                             ActionType, " ", FolderPath)
 ),
 // ============================================================
 // LINUX DEFENSE EVASION -- T1562.001 / T1070 / T1222 / T1014 / T1547.006
@@ -1025,8 +1047,8 @@ union isfuzzy=true
                            "WmiBindEventFilterToConsumer", "PowerShellCommand",
                            "CreateRemoteThreadApiCall", "ProcessPrimaryTokenModified",
                            "OpenProcessApiCall")
-        or ActionType startswith "Asr" or ActionType startswith "ControlledFolderAccess"
         or ActionType endswith "RemoteApiCall"
+    // ASR and Controlled Folder Access blocks are handled in the Defender Detection block
     | extend PsCommand = tostring(parse_json(AdditionalFields).Command)
     | where ActionType != "PowerShellCommand"
         or PsCommand has_any ("DownloadString", "DownloadFile", "Invoke-Expression", "FromBase64String",
@@ -1394,7 +1416,7 @@ union isfuzzy=true
     datatable(TimeGenerated:datetime, Signal:string, DeviceName:string,
               Account:string, InitiatingProcess:string,
               InitiatingProcessCmd:string, ChildProcess:string,
-              SHA256:string, Detail:string)[]
+              SHA256:string, ThreatName:string, Action:string, Detail:string)[]
 )
 // ============================================================
 // NOISE SUPPRESSION - hard signals bypass this entirely
@@ -1488,13 +1510,14 @@ union isfuzzy=true
 )
 | extend IOCs = strcat_array(IOCs, ", ")
 | project-away IocText, Cands
+| extend ThreatName = coalesce(ThreatName, ""), Action = coalesce(Action, "")
 | extend InitiatingProcessCmd = substring(InitiatingProcessCmd, 0, 120)
 | extend Detail = substring(Detail, 0, 150)
 | summarize LastSeen = max(TimeGenerated), Hits = count()
-    by Severity, RiskScore, Signal, DeviceName, Account, Detail, IOCs,
+    by Severity, RiskScore, Signal, ThreatName, Action, DeviceName, Account, Detail, IOCs,
        InitiatingProcess, InitiatingProcessCmd, ChildProcess, SHA256,
        TimeBin = bin(TimeGenerated, 1m)
-| project TimeGenerated = LastSeen, Severity, RiskScore, Signal, DeviceName, Account, Detail,
-          IOCs, InitiatingProcess, InitiatingProcessCmd, ChildProcess, SHA256, Hits
+| project TimeGenerated = LastSeen, Severity, RiskScore, Hits, Signal, DeviceName, Account,
+          Detail, IOCs, InitiatingProcess, InitiatingProcessCmd, ChildProcess, SHA256, ThreatName, Action
 | sort by RiskScore desc, TimeGenerated desc
 ```
