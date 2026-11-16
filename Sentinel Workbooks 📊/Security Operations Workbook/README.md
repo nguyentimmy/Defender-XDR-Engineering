@@ -1,68 +1,102 @@
-# 📊 Endpoint Security Workbook — How These Fit Together
+# 📊 Security Operations Workbook — How These Fit Together
 
-Three sections inside one workbook. They're not alternatives to each other — together they cover the full loop of prevention, detection, and hunting for the endpoint fleet.
+Four tabs inside one Sentinel workbook. They're not alternatives to each other — together they cover the full loop of detection, prevention, hunting, and measuring how well the SOC responds.
+
+> **Disclaimer:** This workbook does not replace alert triage. Alerts and incidents should still be investigated — the workbook supports deeper investigation.
 
 ---
 
-## 🗺️ The three at a glance
+## 🗺️ The four tabs at a glance
 
-| Section | Mode | Question it answers | Trigger |
-| --- | --- | --- | --- |
-| 🛡️ **ASR Detections** | Passive, continuous | *What did Defender block automatically?* | Policy fires on its own |
-| 🦠 **AV Detections** | Passive, continuous | *What did Defender catch — and did it clean up?* | Signature fires on its own |
-| 🎯 **Endpoint Hunts** | Active, scheduled | *What's happening that nothing caught yet?* | An analyst runs the hunt |
+| Tab | Mode | Question it answers |
+| --- | --- | --- |
+| 🖥️ **Detection Overview** | Passive, continuous | *What's alerting, how bad is it, and where?* |
+| 🛡️ **EDR Overview** (AV + ASR) | Passive, continuous | *What did Defender catch or block — did it clean up, and is the sensor even reporting?* |
+| 📊 **KPI Metrics** | Retrospective | *How fast and how accurately is the SOC responding?* |
+| 🎯 **Threat Hunting** | Active, daily | *What's happening that nothing caught yet?* |
+
+Panels are parameterized — **Hostname** + **Time Range** (plus **User** where it applies). Leave the filters empty for a fleet-wide sweep, or fill them in to scope to one device or user.
 
 ---
 
 ## 🔄 How they relate
 
 ```
-🛡️ ASR Detections  ⎫
-                     ⎬  passive signal — confirms protection is working
-🦠 AV Detections    ⎭
+🖥️ Detection Overview  ⎫
+                         ⎬  passive signal — what fired and what protection stopped
+🛡️ EDR Overview        ⎭
 
-🎯 Endpoint Hunts   ─  active search — finds what policy and signature can't
-                        (technique-level behavior, not a known bad pattern)
+🎯 Threat Hunting      ─  active search — finds what policy and signature can't
 
                 All three converge here:
                         ↓
-         A device shows up repeatedly, or a hunt hit
+         A device or user shows up repeatedly, or a hunt hit
          looks worth escalating
                         ↓
-        🔍 Incident Response Workbook (Device Compromise Triage)
+        🔍 Incident Response Workbook (Device / User Compromise Triage)
+
+📊 KPI Metrics         ─  looks back at how all of the above was handled
 ```
 
-ASR and AV don't depend on each other or on Endpoint Hunts — they run in parallel, watching different failure modes. Endpoint Hunts is the odd one out: it's the only section here that requires a person to actively go looking, because it's built to catch what the other two structurally can't — behavior with no signature and no policy match.
+---
+
+## 🖥️ Detection Overview
+
+**Purpose: the at-a-glance view of everything that alerted.**
+
+- **Alerts** — searchable alert table with status, severity, device, account, files, commands, and IOCs
+- **Detection by Severity + Alert Status** — how bad, and how much is still open
+- **Detections by Technique + Alerts Over Time by Severity** — what attackers are attempting, and when
+- **Top 10 Alert Types** — the noisiest detections, with severity and product
+- **Processes on Device** — process activity over time for the selected host
+
+> 💡 Start here every morning. A rising count of **New** alerts or a spike in one technique tells you where to look before anything else.
 
 ---
 
-## 🛡️ ASR Detections
+## 🛡️ EDR Overview
 
-**Purpose: confirm what attack surface reduction blocked.**
+**Purpose: confirm what Defender caught and blocked — and whether the sensors can be trusted.**
 
-Native ASR rule firings across the fleet — a signal source, not a triage queue. A spike in one rule usually means either a new attack pattern hitting multiple devices, or a legitimate tool that needs an exception carved out, not an active incident on its own.
+### 🦠 AV
+- **Antivirus Detections** — every detection risk-scored by remediation status, whether it was running, threat family, and path
+- **AV Overview, Severity, Over Time, Top Threats** — the trend and volume view
+- **EDR Evasions** — BYOVD, EDR-killer tools, EDR process/service kills, Defender tampering, Safe Mode abuse, log tampering
+- **Defender Health** — sensors not reporting, with tamper protection state
+- **Sensor Coverage + Onboarding** — active vs. inactive sensors and onboarded vs. not
 
-> 💡 Watch for the same rule firing on the same device repeatedly — that's a stronger signal than a one-off hit anywhere else.
+### 🧱 ASR
+- **ASR Detections** — every hit with rule, Block vs. Audit, device, file, and initiating process
+- **Hits by Rule, Block vs. Audit, Severity, Over Time** — which rules fire and how hard
+- **Top Triggering Processes + Top Devices** — attack tooling vs. legitimate apps needing an exclusion
+- **Audit-Only Rules** — rules that have never blocked, ranked as candidates to move from Audit to Block
+
+> 💡 A detection marked **Not Remediated** is worth more attention than three clean removals. And check sensor health first: a device that isn't reporting looks identical to a clean one.
 
 ---
 
-## 🦠 AV Detections
+## 📊 KPI Metrics
 
-**Purpose: confirm what antivirus caught — and whether it actually stopped it.**
+**Purpose: SOC optimization — measure how fast and how accurately incidents are handled.**
 
-Native AV detections across the fleet, with particular attention to remediation status. The gap that matters most here isn't "was something detected" — it's "was it detected *and* successfully remediated." An unremediated detection is a live problem, not a closed one.
+- **MTTD / MTTA / MTTR** — mean time to detect, acknowledge, and resolve, with trends and breakdowns by severity
+- **Incidents by Analyst + Status** — workload and backlog per analyst
+- **Classification + TP / BP / FP Rates** — how much alerting is real, benign, or noise
 
-> 💡 A detection with `NotRemediated` status is worth more attention than three clean removals — it means the threat may still be present.
+> 💡 A high false-positive rate on one detection is a tuning task, not just a metric — feed it back into the detection rule or the hunt's exclusions.
 
 ---
 
-## 🎯 Endpoint Hunts
+## 🎯 Threat Hunting
 
-**Purpose: find what ASR and AV structurally can't.**
+**Purpose: find what Detection Overview and EDR Overview structurally can't.**
 
-Proactive, technique-level hunting — evasion, staging, unapproved tooling, rare persistence — grouped by cadence rather than run as one flat list. Daily hunts need same-day eyes; weekly and monthly hunts cover slower-moving or more expensive queries.
+Proactive, technique-level daily hunts, split by entity:
 
-Unlike the other two sections, nothing here fires on its own. It's only as current as the last time someone ran it.
+- **💻 Device Hunts** — HTTP + Tor downloads, LOLBin abuse, remote file drops, sensitive config downloads, webshells, EDR evasions, external PowerShell downloads, rare service processes, unapproved remote access tools
+- **👤 User Hunts** — malicious attachments, MFA spamming, sign-ins from known-malicious IPs
+
+Unlike the other tabs, nothing here fires on its own. It's only as current as the last time someone ran it.
 
 > 💡 If a hunt hasn't been run in its expected cadence window, treat that gap itself as a coverage risk, not just an empty result.
 
@@ -70,32 +104,38 @@ Unlike the other two sections, nothing here fires on its own. It's only as curre
 
 ## ⚖️ Passive vs. active — why both are necessary
 
-| | ASR / AV | Endpoint Hunts |
+| | Detection / EDR Overview | Threat Hunting |
 | --- | --- | --- |
-| Trigger | Automatic — policy or signature match | Manual — analyst runs the query |
-| Cadence | Continuous, real-time | Daily / weekly / monthly |
+| Trigger | Automatic — rule, policy, or signature match | Manual — analyst runs the query |
+| Cadence | Continuous, real-time | Daily |
 | Coverage | Known techniques, policy-defined | Technique-level behavior, no signature required |
 | Confidence | High — already confirmed by the engine | Variable — candidate for investigation |
 | Blind spot | Anything with no matching rule or signature | Nothing runs itself — depends on hunt cadence being kept |
 
-Neither replaces the other. ASR and AV tell you protection is working; Endpoint Hunts tells you what protection was never going to catch in the first place.
+Neither replaces the other. Alerts and EDR tell you protection is working; Threat Hunting tells you what protection was never going to catch in the first place.
 
 ---
 
 ## 🧭 Quick reference — where do I look?
 
-| Situation | Section |
+| Situation | Tab |
 | --- | --- |
-| Morning check, nothing specific | 🎯 Endpoint Hunts (daily) |
-| Checking whether protection is firing fleet-wide | 🛡️ ASR Detections / 🦠 AV Detections |
-| A detection came back unremediated | 🦠 AV Detections → escalate if unresolved |
-| Same ASR rule firing across multiple devices | 🛡️ ASR Detections → check for new campaign vs. FP |
-| A hunt turns up something worth digging into | 🔍 Incident Response Workbook |
+| Morning check — what's alerting? | 🖥️ Detection Overview |
+| Daily proactive sweep | 🎯 Threat Hunting |
+| A detection came back unremediated | 🛡️ EDR Overview (AV) → escalate if unresolved |
+| Checking whether a sensor is down or tamper protection is off | 🛡️ EDR Overview (Defender Health) |
+| Same ASR rule firing across multiple devices | 🛡️ EDR Overview (ASR) → new campaign vs. FP |
+| Deciding which ASR rules to move from Audit to Block | 🛡️ EDR Overview (Audit-Only Rules) |
+| A user is getting MFA-bombed or signed in from a bad IP | 🎯 Threat Hunting (User Hunts) |
+| Reporting on response times or analyst workload | 📊 KPI Metrics |
+| Anything worth digging into | 🔍 Incident Response Workbook |
 
 ---
 
 ## 📌 Notes
 
-Exclusion lists and benign-parent filters are environment-specific — keep them current as new sanctioned tooling gets deployed, or hunts will drown in known-good noise.
+Exclusion lists, trusted-domain lists, and the `KnownProcesses` watchlist are environment-specific — keep them current as new sanctioned tooling gets deployed, or hunts will drown in known-good noise.
+
+Tamper protection can't be read directly in Sentinel (the `DeviceTvm*` tables are Defender XDR only), so Defender Health infers it from registry changes — a device that never changed the setting shows **Unknown**.
 
 This workbook surfaces activity for human review; it doesn't take action on its own. Pair anything high-fidelity here with a scheduled analytics rule if it should page someone instead of waiting to be glanced at.
