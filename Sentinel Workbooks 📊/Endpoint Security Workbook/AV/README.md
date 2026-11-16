@@ -1,24 +1,24 @@
-# AV Dashboard
+# EDR Dashboard 1.0
 
 Sentinel workbook for Microsoft Defender antivirus detections, EDR tampering and sensor health. It shows what AV caught, whether the threat was remediated, attempts to blind the EDR, and which devices aren't reporting.
 
 > **Disclaimer:** This workbook does not replace alert triage. Alerts and incidents should still be investigated for a deeper investigation.
 
-**Parameters:** `TimeRange`
+**Parameters:** `DeviceName` (shown as Hostname, optional; leave empty for all devices), `TimeRange`
 
 | Panel | Visualization | Shows |
 |---|---|---|
-| 🛡️ Antivirus Detections 1.0 | Grid | Each detection scored by remediation, execution, threat family and path |
-| 🥧 AV Detections by Severity | Pie chart | Detections split by the same risk scoring as Antivirus Detections 1.0 |
+| 🛡️ Antivirus Detections | Grid | Each detection scored by remediation, execution, threat family and path |
+| 🥧 AV Detections by Severity | Pie chart | Detections split by the same risk scoring as Antivirus Detections |
 | 🦠 AV Overview Tiles | Tiles | Detections, devices, unique threats, not remediated, ran before caught |
 | 📈 AV Detections Over Time | Time chart | Detections per hour for the top 5 threats, everything else grouped as Other |
 | 🧬 Top Detected Threats | Grid | Top 10 threats with device count, remediation and first/last seen |
 | 🥷 EDR Evasions | Grid | BYOVD drivers, EDR-killer tools, EDR process/service kills, Defender tampering, Safe Mode abuse, log tampering |
-| 💓 Defender Health | Grid | Onboarded devices whose sensor isn't Active (an empty result means everything is healthy) |
+| 💓 Defender Health | Grid | Onboarded devices whose sensor isn't Active, with tamper protection state (an empty result means everything is healthy) |
 | 📊 Sensor Coverage Tiles | Tiles | Onboarded, active, inactive, impaired devices and coverage % |
+| 🟢 Active vs Inactive Sensors | Pie chart | Onboarded devices split by sensor health state |
 | 🥧 Onboarding Status | Pie chart | Onboarded vs. devices found by device discovery that aren't onboarded |
 | 🧩 Onboarded vs Not Onboarded | Pie chart | VMs sending Azure Monitor heartbeats compared against Defender's onboarded devices |
-| 💤 Stale Devices | Grid | Devices that reported in the last 30 days but have been silent for 7+ days |
 
 **Notes**
 - AV panels use `AntivirusDetection` events only. `AntivirusReport` re-reports threats that were already detected, so it's left out to avoid double counting.
@@ -26,12 +26,14 @@ Sentinel workbook for Microsoft Defender antivirus detections, EDR tampering and
 
 ---
 
-## 🛡️ Antivirus Detections 1.0
+## 🛡️ Antivirus Detections
 Grid
 
 ```kql
+let TargetDevice = trim(" ", "{DeviceName}");
 DeviceEvents
 | where TimeGenerated {TimeRange}
+| where isempty(TargetDevice) or DeviceName has TargetDevice
 | where ActionType == "AntivirusDetection"
 | extend Fields = parse_json(AdditionalFields)
 | extend
@@ -87,8 +89,10 @@ DeviceEvents
 Pie chart. Series colors: Critical red, High orange, Medium yellow, Low green.
 
 ```kql
+let TargetDevice = trim(" ", "{DeviceName}");
 DeviceEvents
 | where TimeGenerated {TimeRange}
+| where isempty(TargetDevice) or DeviceName has TargetDevice
 | where ActionType == "AntivirusDetection"
 | extend F = parse_json(AdditionalFields)
 | extend ThreatName = tostring(F.ThreatName),
@@ -115,8 +119,10 @@ DeviceEvents
 Tiles: Title = `Metric`, Left = `Value`
 
 ```kql
+let TargetDevice = trim(" ", "{DeviceName}");
 let AV = DeviceEvents
     | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
     | where ActionType == "AntivirusDetection"
     | extend AF = parse_json(AdditionalFields)
     | extend ThreatName = tostring(AF.ThreatName);
@@ -134,8 +140,10 @@ union
 Time chart
 
 ```kql
+let TargetDevice = trim(" ", "{DeviceName}");
 let AV = DeviceEvents
     | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
     | where ActionType == "AntivirusDetection"
     | extend ThreatName = tostring(parse_json(AdditionalFields).ThreatName);
 let Top = AV | summarize C = count() by ThreatName | top 5 by C | project ThreatName;
@@ -149,8 +157,10 @@ AV
 Grid: Bar renderer on `Detections`, Date/Time renderer on `FirstSeen` and `LastSeen`
 
 ```kql
+let TargetDevice = trim(" ", "{DeviceName}");
 DeviceEvents
 | where TimeGenerated {TimeRange}
+| where isempty(TargetDevice) or DeviceName has TargetDevice
 | where ActionType == "AntivirusDetection"
 | extend AF = parse_json(AdditionalFields)
 | summarize Detections = count(), Devices = dcount(DeviceName),
@@ -166,6 +176,7 @@ DeviceEvents
 Grid
 
 ```kql
+let TargetDevice = trim(" ", "{DeviceName}");
 let EdrProcesses = dynamic([
     "MsMpEng.exe", "MsSense.exe", "SenseIR.exe", "SenseCncProxy.exe",
     "CSFalconService.exe", "CSFalconContainer.exe",
@@ -195,6 +206,7 @@ union isfuzzy=true
 (
     DeviceImageLoadEvents
     | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
     | where FileName has_any (VulnerableDrivers)
     | extend Technique = "🔴 BYOVD Vulnerable Driver Load",
              RiskScore = 9,
@@ -207,6 +219,7 @@ union isfuzzy=true
 (
     DeviceFileEvents
     | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
     | where FileName has_any (VulnerableDrivers)
     | where ActionType in ("FileCreated", "FileModified")
     | extend Technique = "🔴 BYOVD Vulnerable Driver Dropped",
@@ -220,6 +233,7 @@ union isfuzzy=true
 (
     DeviceProcessEvents
     | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
     | extend CmdArgs = replace_regex(ProcessCommandLine, @'(?i)^\s*"?[^"]*?\.exe"?', "")
     | where tolower(FileName) in~ (EdrKillerTools)
         or (CmdArgs has_any (EdrKillerTools) and CmdArgs has_any (EdrProcesses))
@@ -233,6 +247,7 @@ union isfuzzy=true
 (
     DeviceProcessEvents
     | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
     | extend CmdArgs = replace_regex(ProcessCommandLine, @'(?i)^\s*"?[^"]*?\.exe"?', "")
     | where FileName in~ ("taskkill.exe", "tskill.exe", "wmic.exe", "powershell.exe", "pwsh.exe", "pskill.exe", "pskill64.exe")
     | where CmdArgs has_any (EdrProcesses)
@@ -247,6 +262,7 @@ union isfuzzy=true
 (
     DeviceProcessEvents
     | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
     | extend CmdArgs = replace_regex(ProcessCommandLine, @'(?i)^\s*"?[^"]*?\.exe"?', "")
     | where FileName in~ ("sc.exe", "net.exe", "net1.exe", "powershell.exe", "pwsh.exe", "reg.exe")
     | where CmdArgs has_any (EdrServices)
@@ -261,6 +277,7 @@ union isfuzzy=true
 (
     DeviceProcessEvents
     | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
     | extend CmdArgs = replace_regex(ProcessCommandLine, @'(?i)^\s*"?[^"]*?\.exe"?', "")
     | where CmdArgs has_any (
         "DisableRealtimeMonitoring", "DisableBehaviorMonitoring",
@@ -283,6 +300,7 @@ union isfuzzy=true
 (
     DeviceProcessEvents
     | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
     | extend CmdArgs = replace_regex(ProcessCommandLine, @'(?i)^\s*"?[^"]*?\.exe"?', "")
     | where CmdArgs has_any ("bcdedit", "safeboot", "bootstatuspolicy")
     | where CmdArgs has_any ("/set", "safeboot network", "safeboot minimal", "-set")
@@ -296,6 +314,7 @@ union isfuzzy=true
 (
     DeviceProcessEvents
     | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
     | extend CmdArgs = replace_regex(ProcessCommandLine, @'(?i)^\s*"?[^"]*?\.exe"?', "")
     | where CmdArgs has_any (
         "wevtutil cl", "wevtutil sl", "Clear-EventLog", "Remove-EventLog",
@@ -312,6 +331,7 @@ union isfuzzy=true
 (
     DeviceEvents
     | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
     | where ActionType in (
         "AntivirusDisabled", "AntivirusConfigurationChange",
         "TamperingAttempt", "SecurityLogCleared",
@@ -355,33 +375,46 @@ union isfuzzy=true
 Grid
 
 ```kql
+let TargetDevice = trim(" ", "{DeviceName}");
+let TP = DeviceRegistryEvents
+    | where TimeGenerated > ago(90d)
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
+    | where RegistryKey has @"Microsoft\Windows Defender\Features"
+    | where RegistryValueName == "TamperProtection"
+    | summarize arg_max(TimeGenerated, RegistryValueData) by DeviceId
+    | project DeviceId, TPValue = RegistryValueData, TPChanged = TimeGenerated;
 DeviceInfo
 | where TimeGenerated {TimeRange}
+| where isempty(TargetDevice) or DeviceName has TargetDevice
 | summarize arg_max(TimeGenerated, OnboardingStatus, SensorHealthState, OSPlatform) by DeviceName, DeviceId
 | where OnboardingStatus == "Onboarded"
 | where SensorHealthState !in~ ("Active", "")
+| join kind=leftouter TP on DeviceId
+| extend TamperProtection = case(
+    TPValue == "5", "✅ On",
+    TPValue in ("0", "4"), "⛔ Off",
+    OSPlatform !startswith "Windows", "N/A",
+    "❔ Unknown")
 | extend Severity = case(
-    SensorHealthState has_any ("Inactive", "Misconfigured"), "🔴 Critical",
+    SensorHealthState has_any ("Inactive", "Misconfigured") or TamperProtection == "⛔ Off", "🔴 Critical",
     SensorHealthState has "ImpairedCommunication", "🟠 High",
     "🟡 Medium"
 )
-| project
-    LastSeen = TimeGenerated,
-    Severity,
-    DeviceName,
-    OSPlatform,
-    SensorHealthState,
-    OnboardingStatus,
-    DeviceId
+| project LastSeen = TimeGenerated, Severity, DeviceName, OSPlatform, SensorHealthState,
+          TamperProtection, TPChanged, OnboardingStatus, DeviceId
 | sort by Severity asc, LastSeen asc
 ```
+
+`TamperProtection` comes from registry changes in the last 90 days. A device that hasn't changed the setting shows **Unknown**.
 
 ## 📊 Sensor Coverage Tiles
 Tiles: Title = `Metric`, Left = `Value`
 
 ```kql
+let TargetDevice = trim(" ", "{DeviceName}");
 let H = DeviceInfo
     | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
     | summarize arg_max(TimeGenerated, OnboardingStatus, SensorHealthState) by DeviceId
     | where OnboardingStatus == "Onboarded";
 let Total = toscalar(H | count);
@@ -395,12 +428,32 @@ union
 | project Metric, Value
 ```
 
+## 🟢 Active vs Inactive Sensors
+Pie chart. Colors: Active green, Inactive red, Impaired orange, Unknown gray.
+
+```kql
+let TargetDevice = trim(" ", "{DeviceName}");
+DeviceInfo
+| where TimeGenerated {TimeRange}
+| where isempty(TargetDevice) or DeviceName has TargetDevice
+| summarize arg_max(TimeGenerated, OnboardingStatus, SensorHealthState) by DeviceId
+| where OnboardingStatus == "Onboarded"
+| extend Status = case(
+    SensorHealthState == "Active", "✅ Active",
+    SensorHealthState == "Inactive", "⛔ Inactive",
+    SensorHealthState has_any ("Impaired", "Misconfigured"), "⚠️ Impaired",
+    "❔ Unknown")
+| summarize Devices = count() by Status
+```
+
 ## 🥧 Onboarding Status
 Pie chart. Colors: Onboarded green, Not Onboarded orange, Unsupported red, Insufficient Info gray.
 
 ```kql
+let TargetDevice = trim(" ", "{DeviceName}");
 DeviceInfo
 | where TimeGenerated {TimeRange}
+| where isempty(TargetDevice) or DeviceName has TargetDevice
 | summarize arg_max(TimeGenerated, OnboardingStatus) by DeviceId
 | extend Status = case(
     OnboardingStatus == "Onboarded", "✅ Onboarded",
@@ -416,28 +469,18 @@ DeviceInfo
 Pie chart. Colors: Onboarded green, Not Onboarded orange.
 
 ```kql
+let TargetDevice = trim(" ", "{DeviceName}");
 let MDE = DeviceInfo
     | where TimeGenerated > ago(30d)
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
     | where OnboardingStatus == "Onboarded"
     | summarize by Name = tolower(tostring(split(DeviceName, ".")[0]));
 Heartbeat
 | where TimeGenerated > ago(30d)
+| where isempty(TargetDevice) or Computer has TargetDevice
 | summarize arg_max(TimeGenerated, OSType) by Name = tolower(tostring(split(Computer, ".")[0]))
 | extend Status = iff(Name in (MDE), "✅ Onboarded", "⚠️ Not Onboarded")
 | summarize Devices = count() by Status
 ```
 
 Requires the Azure Monitor Agent on the VMs. Devices are matched on short hostname, since Defender sometimes reports the full domain name. VMs without the agent won't appear.
-
-## 💤 Stale Devices
-Grid (fixed 30-day lookback, ignores `TimeRange`)
-
-```kql
-DeviceInfo
-| where TimeGenerated > ago(30d)
-| summarize arg_max(TimeGenerated, OSPlatform, SensorHealthState, ClientVersion, PublicIP) by DeviceName
-| where TimeGenerated < ago(7d)
-| extend DaysSilent = datetime_diff("day", now(), TimeGenerated)
-| project LastSeen = TimeGenerated, DaysSilent, DeviceName, OSPlatform, SensorHealthState, ClientVersion, PublicIP
-| sort by DaysSilent desc
-```
