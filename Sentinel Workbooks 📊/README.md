@@ -8,7 +8,7 @@ Three Microsoft Sentinel / Defender XDR workbooks. They are not alternatives to 
 
 | Workbook | Mode | Question it answers | Scope |
 | --- | --- | --- | --- |
-| 📊 **Endpoint Security** | Continuous monitoring | *Is anything wrong across the fleet?* | All devices |
+| 📊 **Security Operations** | Continuous monitoring | *Is anything wrong across the fleet?* | All devices |
 | 🔍 **Incident Response** | On-demand, parameterized | *What happened to this device or user?* | One entity |
 | 🔬 **Digital Forensics** | On-demand, narrow window | *Reconstruct exactly what occurred* | One entity, minutes to hours |
 
@@ -17,11 +17,11 @@ Three Microsoft Sentinel / Defender XDR workbooks. They are not alternatives to 
 ## 🔄 The workflow
 
 ```
-📊 Endpoint Security Workbook
+📊 Security Operations Workbook
    Fleet-wide monitoring — something surfaces
               ↓  gives you an entity
 🔍 Incident Response Workbook
-   Unified device + user timeline — confirms and scopes
+   Unified device, user + data exfil timeline — confirms and scopes
               ↓  gives you a device AND a timestamp
 🔬 Digital Forensics Workbook
    Complete unfiltered evidence in that window
@@ -31,17 +31,21 @@ The dependency runs one direction. **You can't start with forensics**, because f
 
 ---
 
-## 📊 Endpoint Security Workbook
+## 📊 Security Operations Workbook
 
-**Purpose: continuous endpoint monitoring.**
+**Purpose: continuous security monitoring.**
 
-This is the one you glance at. It watches the fleet for prevention hits, evasion attempts, unsanctioned tooling, and telemetry gaps — activity that isn't tied to a specific open investigation.
+This is the one you glance at. It watches the fleet for alerts, prevention hits, evasion attempts, and telemetry gaps — activity that isn't tied to a specific open investigation.
 
-Panels cover unapproved remote-access tools, rare service processes, EDR evasion attempts, ASR blocks, antivirus detections, and Defender sensor health.
+**Detection overview** — alerts by severity, technique, and status, top alert types, alerts over time, and a searchable alert table with entities and IOCs.
+
+**EDR Dashboard** — risk-scored antivirus detections (remediated vs. not), EDR evasion attempts, Defender sensor health with tamper protection state, sensor coverage, and onboarding status.
+
+**ASR Dashboard** — ASR blocks vs. audits, hits by rule, top triggering processes and devices, and audit-only rules that are ready to switch to Block.
 
 It's the layer that tells you *where to look*. When a device shows up here repeatedly, or an AV detection comes back unremediated, that device becomes the input to the IR workbook.
 
-> 💡 The Defender Health panel belongs first — it shows which devices aren't reporting telemetry, which determines how much you can trust every other panel.
+> 💡 Check sensor health first — devices that aren't reporting telemetry look identical to clean devices, so it determines how much you can trust every other panel.
 
 ---
 
@@ -55,9 +59,13 @@ Without it, investigating one suspect entity means opening a dozen separate quer
 
 **Device tab** — persistence, credential access, defense evasion, ransomware prep, categorized recon, lateral movement, network egress, backdoor shells, unauthorized remote tools, Defender detections.
 
-**User tab** — MFA registration and removal, password resets, mailbox forwarding rules, risky sign-ins, rare-country and malicious-IP logons, OAuth consent grants, mailbox export.
+**User tab** — risky sign-ins, brute force and MFA fatigue, impossible travel, new-country and malicious-IP logons, legacy auth, MFA and password changes, role assignments, OAuth consent grants, inbox forwarding rules, mailbox delegation and export.
 
-Results are **filtered and scored**. Known-benign activity is suppressed so the timeline stays readable, while high-fidelity signals — credential dumping, ransomware prep, backdoor shells, defense evasion — always surface regardless of suppression.
+**Data Exfil tab** — uploads to file-sharing, paste and webhook sites, exfil tooling, archiving and staging, removable media, bulk cloud downloads, outbound attachments, and sensitive file movement.
+
+Results are **filtered and scored**. Known-benign activity is suppressed so the timeline stays readable, while high-fidelity signals — credential dumping, ransomware prep, backdoor shells, defense evasion — always surface regardless of suppression. It also surfaces the noisier, lower-severity activity that never became an alert, alongside the alerts themselves.
+
+> ⚠️ This workbook does not replace alert triage. Alerts and incidents should still be investigated — IR supports the deeper investigation.
 
 > 💡 **The two tabs pivot into each other.** Most intrusions cross both the endpoint and the identity plane. A risky sign-in names a device; a compromised endpoint names a logged-in account. Start with whichever entity you have and follow the trail to the other.
 
@@ -99,12 +107,14 @@ Both approaches are correct for their stage. Carrying IR's exclusion lists into 
 
 | Situation | Workbook |
 | --- | --- |
-| Morning check, nothing specific | 📊 Endpoint Security |
+| Morning check, nothing specific | 📊 Security Operations |
 | An alert fired on a device | 🔍 Incident Response |
 | A user reported a phishing email | 🔍 Incident Response (user tab) |
 | IR showed credential dumping at 14:22 | 🔬 Digital Forensics, scoped 14:00–14:45 |
 | Writing the incident report timeline | 🔬 Digital Forensics |
-| Checking whether protection is disabled anywhere | 📊 Endpoint Security |
+| Checking whether protection is disabled anywhere | 📊 Security Operations |
+| Deciding which ASR rules to move from Audit to Block | 📊 Security Operations |
+| Suspected data theft by a user or device | 🔍 Incident Response (Data Exfil tab) |
 
 ---
 
