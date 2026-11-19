@@ -1,46 +1,37 @@
-# AI & Autonomous Threats 1.0
+# 🤖 AI & Autonomous Threats 1.0
 
 A Microsoft Sentinel workbook that tracks LLM API usage and AI-driven attack activity across onboarded devices. It answers four questions: which devices and processes talk to LLM APIs, which of those are unsanctioned, which hosts combine LLM access with offensive tooling, and where AI agent frameworks or local models are being installed.
 
-> **Disclaimer:** This workbook provides visibility for hunting and triage. It does not replace alert triage. Alerts and incidents should still be investigated for deeper analysis.
+> ⚠️ **Disclaimer:** This workbook provides visibility for hunting and triage. It does not replace alert triage. Alerts and incidents should still be investigated for deeper analysis.
 
 ---
 
-## Parameters
-
-| Parameter | Display Name | Type | Notes |
-|---|---|---|---|
-| `TimeRange` | Time Range | Time range picker | Default: Last 7 days |
-| `DeviceName` | Hostname | Text | Optional. Leave empty for all devices |
-
-Every query starts with `let TargetDevice = trim(" ", "{DeviceName}");` and filters with `isempty(TargetDevice) or DeviceName has TargetDevice`.
-
----
-
-## Panels
+## 🗂️ Panels
 
 | # | Panel | Visualization | Purpose |
 |---|---|---|---|
-| 1 | Overview Tiles | Tiles | LLM calls, devices, unsanctioned callers, offensive tool runs, agent hosts |
-| 2 | LLM API Calls Over Time | Time chart | Usage trend by provider |
-| 3 | LLM Calls by Provider | Pie | Which AI providers are in use |
-| 4 | Top LLM API Callers | Grid | Every process calling LLM APIs, sanctioned vs. unsanctioned |
-| 5 | Unsanctioned LLM Activity | Grid | Scripts, CLIs and unknown binaries calling LLM APIs |
-| 6 | LLM-Driven Offensive Agent | Grid | Hosts with unsanctioned LLM calls **and** offensive tooling |
-| 7 | Recon Toolchain Burst | Grid | 3+ offensive tools from one parent within an hour |
-| 8 | AI Agent Framework Activity | Grid | Installs of agent frameworks and offensive AI tools |
-| 9 | Local LLM Runtimes | Grid | Ollama, LM Studio and llama.cpp running on devices |
-| 10 | Inbound Scan & Sweep Bursts | Grid | One source hitting many ports or devices within minutes |
-| 11 | Machine-Speed Logon Failures | Grid | Brute force and spraying at machine speed, plus any later success |
-| 12 | Web Request Bursts | Grid | Fuzzing, crawling and tool user agents against IIS web servers |
-| 13 | WAF Request Bursts | Grid | The same pattern from Azure Application Gateway WAF logs |
-| 14 | Machine-Speed Discovery | Grid | 8+ distinct discovery commands from one parent process within 60 seconds |
+| 1 | 📊 Overview Tiles | Tiles | LLM calls, devices, unsanctioned callers, offensive tool runs, agent hosts |
+| 2 | 📈 LLM API Calls Over Time | Time chart | Usage trend by provider |
+| 3 | 🥧 LLM Calls by Provider | Pie | Which AI providers are in use |
+| 4 | 🏆 Top LLM API Callers | Grid | Every process calling LLM APIs, sanctioned vs. unsanctioned |
+| 5 | ⚠️ Unsanctioned LLM Activity | Grid | Scripts, CLIs and unknown binaries calling LLM APIs |
+| 6 | 🤖 LLM-Driven Offensive Agent | Grid | Hosts with unsanctioned LLM calls **and** offensive tooling |
+| 7 | 🔎 Recon Toolchain Burst | Grid | 3+ offensive tools from one parent within an hour |
+| 8 | 🧩 AI Agent Framework Activity | Grid | Installs of agent frameworks and offensive AI tools |
+| 9 | 🖥️ Local LLM Runtimes | Grid | Ollama, LM Studio and llama.cpp running on devices |
+| 10 | 🌐 Inbound Scan & Sweep Bursts | Grid | One source hitting many ports or devices within minutes |
+| 11 | 🔨 Machine-Speed Logon Failures | Grid | Brute force and spraying at machine speed, plus any later success |
+| 12 | 🌍 Web Request Bursts | Grid | Fuzzing, crawling and tool user agents against IIS web servers |
+| 13 | 🛡️ WAF Request Bursts | Grid | The same pattern from Azure Application Gateway WAF logs |
+| 14 | ⚡ Machine-Speed Discovery | Grid | 8+ distinct discovery commands from one parent process within 60 seconds |
+| 15 | ☁️ Cloud Sign-In Bursts | Grid | Entra ID spraying and brute force at machine speed, plus valid-password and success flags |
+| 16 | 🐢 Distributed & Low-and-Slow Sign-Ins | Grid | Attacks that rotate IPs or slow down to stay under burst thresholds |
 
-Panels 10 to 13 cover agents running on the attacker's own infrastructure. Their LLM calls never touch your network, so you detect them by the speed and volume of what reaches you.
+Panels 10 to 13, 15 and 16 cover agents running on the attacker's own infrastructure. Their LLM calls never touch your network, so you detect them by the speed and volume of what reaches you.
 
 ---
 
-## 1. Overview Tiles
+## 📊 1. Overview Tiles
 
 **Visualization:** Tiles (Title: `Metric`, Left: `Value`)
 
@@ -83,7 +74,7 @@ union
 
 ---
 
-## 2. LLM API Calls Over Time
+## 📈 2. LLM API Calls Over Time
 
 **Visualization:** Time chart
 
@@ -120,7 +111,7 @@ DeviceNetworkEvents
 
 ---
 
-## 3. LLM Calls by Provider
+## 🥧 3. LLM Calls by Provider
 
 **Visualization:** Pie chart
 
@@ -158,7 +149,7 @@ DeviceNetworkEvents
 
 ---
 
-## 4. Top LLM API Callers
+## 🏆 4. Top LLM API Callers
 
 **Visualization:** Grid
 
@@ -193,7 +184,7 @@ DeviceNetworkEvents
 
 ---
 
-## 5. Unsanctioned LLM Activity
+## ⚠️ 5. Unsanctioned LLM Activity
 
 **Visualization:** Grid
 
@@ -236,7 +227,7 @@ DeviceNetworkEvents
 
 ---
 
-## 6. LLM-Driven Offensive Agent
+## 🤖 6. LLM-Driven Offensive Agent
 
 **Visualization:** Grid
 
@@ -289,7 +280,7 @@ LLMHosts
 
 ---
 
-## 7. Recon Toolchain Burst
+## 🔎 7. Recon Toolchain Burst
 
 **Visualization:** Grid
 
@@ -324,7 +315,7 @@ DeviceProcessEvents
 
 ---
 
-## 8. AI Agent Framework Activity
+## 🧩 8. AI Agent Framework Activity
 
 **Visualization:** Grid
 
@@ -360,7 +351,7 @@ DeviceProcessEvents
 
 ---
 
-## 9. Local LLM Runtimes
+## 🖥️ 9. Local LLM Runtimes
 
 **Visualization:** Grid
 
@@ -387,7 +378,7 @@ DeviceProcessEvents
 
 ---
 
-## 10. Inbound Scan & Sweep Bursts
+## 🌐 10. Inbound Scan & Sweep Bursts
 
 **Visualization:** Grid
 
@@ -448,7 +439,7 @@ union
 
 ---
 
-## 11. Machine-Speed Logon Failures
+## 🔨 11. Machine-Speed Logon Failures
 
 **Visualization:** Grid
 
@@ -502,7 +493,7 @@ DeviceLogonEvents
 
 ---
 
-## 12. Web Request Bursts
+## 🌍 12. Web Request Bursts
 
 **Visualization:** Grid  ·  **Requires:** IIS logs in `W3CIISLog` (Azure Monitor Agent)
 
@@ -563,7 +554,7 @@ W3CIISLog
 
 ---
 
-## 13. WAF Request Bursts
+## 🛡️ 13. WAF Request Bursts
 
 **Visualization:** Grid  ·  **Requires:** Application Gateway WAF diagnostics sent to the workspace (`AzureDiagnostics`, category `ApplicationGatewayFirewallLog`)
 
@@ -606,7 +597,7 @@ AzureDiagnostics
 
 ---
 
-## 14. Machine-Speed Discovery
+## ⚡ 14. Machine-Speed Discovery
 
 **Visualization:** Grid
 
@@ -676,14 +667,210 @@ union
 
 ---
 
-## Tuning Notes
+## ☁️ 15. Cloud Sign-In Bursts
+
+**Visualization:** Grid  ·  **Data:** `SigninLogs`, `AADNonInteractiveUserSignInLogs`
+
+Failed Entra ID sign-ins from one IP in 5-minute windows, across interactive and non-interactive sign-ins. Many accounts means spraying, and many attempts on few accounts means brute force.
+
+- **Valid password:** result codes such as "MFA required" or "blocked by Conditional Access" mean the attacker had the right password. `ValidPwUsers` lists those accounts, and the row ranks **High**.
+- **Succeeded:** the IP later signed in successfully, so the row ranks **Critical**.
+
+```kql
+let BurstWindow = 5m;
+let MinFailures = 20;
+let MinUsers = 5;
+let Allowlist = dynamic([]);   // corporate egress IPs, VPN gateways
+let FailCodes = dynamic(["50126", "50053", "50034", "50055", "50056", "50057", "50064"]);
+let ValidPwCodes = dynamic(["50072", "50074", "50076", "50079", "50158", "53003"]);
+let Signins = union
+    (SigninLogs
+        | where TimeGenerated {TimeRange}
+        | project TimeGenerated, UserPrincipalName, IPAddress, ResultType = tostring(ResultType),
+                  AppDisplayName, UserAgent, ASN = tostring(AutonomousSystemNumber), Location = tostring(Location)),
+    (AADNonInteractiveUserSignInLogs
+        | where TimeGenerated {TimeRange}
+        | project TimeGenerated, UserPrincipalName, IPAddress, ResultType = tostring(ResultType),
+                  AppDisplayName, UserAgent, ASN = tostring(AutonomousSystemNumber), Location = tostring(Location))
+    | extend UserPrincipalName = tolower(UserPrincipalName)
+    | where isnotempty(IPAddress) and IPAddress !in (Allowlist);
+let Successes = Signins
+    | where ResultType == "0"
+    | summarize LastSuccess = max(TimeGenerated),
+                SuccessUsers = make_set(UserPrincipalName, 5)
+             by IPAddress;
+Signins
+| where ResultType in (FailCodes) or ResultType in (ValidPwCodes)
+| summarize Failures = countif(ResultType in (FailCodes)),
+            ValidPw = countif(ResultType in (ValidPwCodes)),
+            Users = dcount(UserPrincipalName),
+            SampleUsers = make_set(UserPrincipalName, 10),
+            ValidPwUsers = make_set_if(UserPrincipalName, ResultType in (ValidPwCodes), 10),
+            Apps = make_set(AppDisplayName, 5),
+            UserAgents = make_set(UserAgent, 5),
+            Location = take_any(Location),
+            ASN = take_any(ASN)
+         by IPAddress, Bucket = bin(TimeGenerated, BurstWindow)
+| where Failures >= MinFailures or Users >= MinUsers
+| summarize Bursts = count(),
+            Failures = sum(Failures),
+            ValidPw = sum(ValidPw),
+            MaxUsers = max(Users),
+            SampleUsers = make_set(SampleUsers, 15),
+            ValidPwUsers = make_set(ValidPwUsers, 10),
+            Apps = make_set(Apps, 5),
+            UserAgents = make_set(UserAgents, 5),
+            Location = take_any(Location),
+            ASN = take_any(ASN),
+            FirstSeen = min(Bucket),
+            LastSeen = max(Bucket)
+         by IPAddress
+| join kind=leftouter Successes on IPAddress
+| extend Succeeded = isnotempty(LastSuccess) and LastSuccess >= FirstSeen
+| extend SuccessUsers = iff(Succeeded, SuccessUsers, dynamic([]))
+| extend Pattern = iff(MaxUsers >= MinUsers, "🧪 Password Spray", "🔨 Brute Force")
+| extend SevRank = case(Succeeded, 1, ValidPw > 0, 2, Failures >= 100 or MaxUsers >= 20, 2, 3)
+| extend Severity = case(SevRank == 1, "🔴 Critical", SevRank == 2, "🟠 High", "🟡 Medium")
+| sort by SevRank asc, Failures desc
+| project FirstSeen, Severity, Pattern, IPAddress, Location, ASN, Succeeded, SuccessUsers,
+          ValidPwUsers, Failures, MaxUsers, SampleUsers, Apps, UserAgents, Bursts, LastSeen
+```
+
+---
+
+## 🐢 16. Distributed & Low-and-Slow Sign-Ins
+
+**Visualization:** Grid  ·  **Data:** `SigninLogs`, `AADNonInteractiveUserSignInLogs`
+
+Catches agents that stay under the per-IP burst thresholds in panel 15. Three patterns are grouped by something other than a single IP in a short window:
+
+| Pattern | Grouped By | Flags When |
+|---|---|---|
+| 🕸️ Distributed Attack on Account | Target user, per hour | 15+ failures from 10+ IPs |
+| 🐢 Low-and-Slow Spray | Source IP, whole time range | Failures in 6+ separate hours, never more than 10 in an hour, across 10+ users |
+| 🎭 Shared Tool Fingerprint | User agent, per hour | 20+ IPs and 20+ users, with 80%+ of that user agent's sign-ins failing |
+
+`Succeeded` means a success came from one of the attacking IPs, so the row ranks **Critical**.
+
+```kql
+let Allowlist = dynamic([]);   // corporate egress IPs, VPN gateways
+let FailCodes = dynamic(["50126", "50053", "50034", "50055", "50056", "50057", "50064"]);
+let ValidPwCodes = dynamic(["50072", "50074", "50076", "50079", "50158", "53003"]);
+let Signins = union
+    (SigninLogs
+        | where TimeGenerated {TimeRange}
+        | project TimeGenerated, UserPrincipalName, IPAddress, ResultType = tostring(ResultType),
+                  UserAgent, ASN = tostring(AutonomousSystemNumber)),
+    (AADNonInteractiveUserSignInLogs
+        | where TimeGenerated {TimeRange}
+        | project TimeGenerated, UserPrincipalName, IPAddress, ResultType = tostring(ResultType),
+                  UserAgent, ASN = tostring(AutonomousSystemNumber))
+    | extend UserPrincipalName = tolower(UserPrincipalName)
+    | where isnotempty(IPAddress) and IPAddress !in (Allowlist)
+    | extend IsFail = ResultType in (FailCodes) or ResultType in (ValidPwCodes),
+             IsSuccess = ResultType == "0";
+let Distributed = Signins
+    | summarize Failures = countif(IsFail),
+                DistinctIPs = dcountif(IPAddress, IsFail),
+                FailIPs = make_set_if(IPAddress, IsFail, 200),
+                OkIPs = make_set_if(IPAddress, IsSuccess, 50),
+                ASNs = make_set_if(ASN, IsFail, 10),
+                FirstSeen = min(TimeGenerated),
+                LastSeen = max(TimeGenerated)
+             by Key = UserPrincipalName, Bucket = bin(TimeGenerated, 1h)
+    | where DistinctIPs >= 10 and Failures >= 15
+    | extend Succeeded = array_length(set_intersect(FailIPs, OkIPs)) > 0
+    | summarize arg_max(DistinctIPs, *), AnySuccess = max(toint(Succeeded)) by Key
+    | extend Succeeded = AnySuccess == 1,
+             DistinctUsers = tolong(1),
+             SampleIPs = array_slice(FailIPs, 0, 9),
+             SampleUsers = pack_array(Key),
+             Pattern = "🕸️ Distributed Attack on Account",
+             KeyType = "User";
+let LowSlow = Signins
+    | where IsFail or IsSuccess
+    | summarize Failures = countif(IsFail),
+                Successes = countif(IsSuccess),
+                DistinctUsers = dcountif(UserPrincipalName, IsFail),
+                SampleUsers = make_set_if(UserPrincipalName, IsFail, 10),
+                ASNs = make_set(ASN, 5),
+                ActiveHours = dcountif(bin(TimeGenerated, 1h), IsFail),
+                FirstSeen = min(TimeGenerated),
+                LastSeen = max(TimeGenerated)
+             by Key = IPAddress
+    | join kind=inner (
+        Signins
+        | where IsFail
+        | summarize PerHour = count() by Key = IPAddress, bin(TimeGenerated, 1h)
+        | summarize MaxPerHour = max(PerHour) by Key
+      ) on Key
+    | where ActiveHours >= 6 and MaxPerHour <= 10 and DistinctUsers >= 10
+    | extend Succeeded = Successes > 0,
+             DistinctIPs = tolong(1),
+             SampleIPs = pack_array(Key),
+             Pattern = "🐢 Low-and-Slow Spray",
+             KeyType = "IP";
+let SharedUA = Signins
+    | where isnotempty(UserAgent)
+    | summarize Total = count(),
+                Failures = countif(IsFail),
+                DistinctIPs = dcountif(IPAddress, IsFail),
+                DistinctUsers = dcountif(UserPrincipalName, IsFail),
+                FailIPs = make_set_if(IPAddress, IsFail, 200),
+                OkIPs = make_set_if(IPAddress, IsSuccess, 200),
+                SampleUsers = make_set_if(UserPrincipalName, IsFail, 10),
+                ASNs = make_set_if(ASN, IsFail, 10),
+                FirstSeen = min(TimeGenerated),
+                LastSeen = max(TimeGenerated)
+             by Key = UserAgent, Bucket = bin(TimeGenerated, 1h)
+    | where DistinctIPs >= 20 and DistinctUsers >= 20 and todouble(Failures) / Total >= 0.8
+    | extend Succeeded = array_length(set_intersect(FailIPs, OkIPs)) > 0
+    | summarize arg_max(DistinctUsers, *), AnySuccess = max(toint(Succeeded)) by Key
+    | extend Succeeded = AnySuccess == 1,
+             SampleIPs = array_slice(FailIPs, 0, 9),
+             Pattern = "🎭 Shared Tool Fingerprint",
+             KeyType = "User Agent";
+union Distributed, LowSlow, SharedUA
+| extend SevRank = case(
+    Succeeded, 1,
+    Pattern has "Distributed" or Pattern has "Shared", 2,
+    DistinctUsers >= 25, 2,
+    3)
+| extend Severity = case(SevRank == 1, "🔴 Critical", SevRank == 2, "🟠 High", "🟡 Medium")
+| sort by SevRank asc, Failures desc
+| project FirstSeen, Severity, Pattern, KeyType, Key, Succeeded, Failures, DistinctIPs,
+          DistinctUsers, SampleIPs, SampleUsers, ASNs, LastSeen
+```
+
+---
+
+## 🔧 Enabling Web & WAF Logs
+
+Panels 12 and 13 stay empty until these logs reach the workspace.
+
+**🌐 IIS logs (panel 12)**
+1. Make sure the web server VM has the Azure Monitor Agent.
+2. In Azure Monitor, create a **Data Collection Rule**, add the VM as a resource, and add an **IIS Logs** data source.
+3. Send it to your Sentinel workspace. Logs appear in `W3CIISLog` within about 15 minutes.
+4. To test in the lab, install IIS on windows-vm: `Install-WindowsFeature Web-Server -IncludeManagementTools` on Windows Server, or `Enable-WindowsOptionalFeature -Online -FeatureName IIS-WebServerRole` on Windows client.
+
+**🛡️ Application Gateway WAF logs (panel 13)**
+1. You need an Application Gateway on the **WAF_v2** tier with a WAF policy in **Detection** or **Prevention** mode.
+2. On the gateway, open **Diagnostic settings** and select **Add diagnostic setting**.
+3. Check **ApplicationGatewayFirewallLog** and send it to your Sentinel workspace.
+4. With **Azure diagnostics** as the destination table, logs land in `AzureDiagnostics`, which matches panel 13. If you choose **Resource specific**, they land in `AGWFirewallLogs` and panel 13 needs updating.
+
+---
+
+## 🛠️ Tuning Notes
 
 - **Sanctioned processes:** Edit `SanctionedProcs` to match the AI apps your organization approves. Anything not on the list appears as unsanctioned.
 - **RemoteUrl coverage:** Defender doesn't always populate `RemoteUrl`, especially on Linux. Turning on network protection improves URL coverage on Windows. Anthropic is also matched by its API IP range (`160.79.104.0/23`); other providers rely on the URL.
 - **Pentest hosts:** Approved pentest or red team devices will appear in panels 6 to 8. Exclude them by hostname or device tag.
 - **Developers:** Panel 8 at Low severity is visibility, not an alert. Developers installing `openai` or `langchain` is normal.
 - **Discovery noise:** Login scripts, inventory tools and admin automation can run discovery commands quickly. Add their parent process to `ExcludedParents` in panel 14 rather than raising `MinDistinct`, so real agent bursts still fire.
-- **Detection rules:** Panels 6, 7 and 10 to 14 aggregate, so they work as scheduled Sentinel analytic rules rather than Defender custom detections.
+- **Corporate IPs:** Add corporate egress IPs and VPN gateways to `Allowlist` in panels 15 and 16. Real users' typos and successful sign-ins from a shared IP would otherwise look like a spray that succeeded.
+- **Detection rules:** Panels 6, 7 and 10 to 16 aggregate, so they work as scheduled Sentinel analytic rules rather than Defender custom detections.
 - **Burst thresholds:** Each of panels 10 to 13 has its thresholds in `let` statements at the top (`MinPorts`, `MinFailures`, `MinRequests` and so on). Start with the defaults, then raise them if normal traffic shows up.
 - **Allowlists:** Add vulnerability scanners, monitoring tools, load balancers and health probes to `Allowlist` in panels 10 to 13, or they'll show as bursts.
 - **Blocked inbound connections:** Panel 10 uses `FirewallInboundConnectionBlocked`, which needs Windows Firewall auditing for dropped packets turned on. Without it, the panel only sees accepted connections.
