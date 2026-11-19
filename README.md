@@ -12,18 +12,6 @@ Everything is built and tested in an Azure homelab (Windows and Linux endpoints 
 
 ---
 
-## 📸 Examples
-
-**🖥️ Detection Overview:** alerts by severity and tactic, top alert types, alerts over time, and the top commands, files and IOCs pulled from alerts.
-
-![Detection Overview](images/detection-overview.png)
-
-**🛡️ EDR Dashboard:** antivirus detections, EDR evasions, Defender health with tamper protection, and sensor coverage.
-
-![EDR Dashboard](images/edr-dashboard.png)
-
----
-
 ## 🔍 What's Inside
 
 ### ⚡ Custom Detection Rules
@@ -96,6 +84,17 @@ Both are needed. They solve different problems.
 - **🔴 Severity scoring** based on confidence and impact
 - **🔢 Versioned:** workbooks start at 1.0 and increment by 0.5 for new versions
 
+---
+
+## 📸 Examples
+
+**🖥️ Detection Overview:** alerts by severity and tactic, top alert types, alerts over time, and the top commands, files and IOCs pulled from alerts.
+
+![Detection Overview](images/detection-overview.png)
+
+**🛡️ EDR Dashboard:** antivirus detections, EDR evasions, Defender health with tamper protection, and sensor coverage.
+
+![EDR Dashboard](images/edr-dashboard.png)
 ---
 
 ## ⚠️ Disclaimer
