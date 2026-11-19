@@ -1,60 +1,82 @@
 # 🛡️ Detection Engineering & Threat Hunting
 
-A curated library of KQL detection rules, threat hunting queries, and Sentinel/Defender workbooks built to detect real-world attacks in enterprise environments.
+A library of KQL detection rules, threat hunting queries, Sentinel/Defender workbooks and SOAR playbooks built to detect and respond to real-world attacks in enterprise environments.
 
 ---
 
 ## 🎯 About
 
-This repo contains detection engineering and threat hunting content developed for Microsoft Sentinel and Microsoft Defender XDR. Detections are mapped to MITRE ATT&CK and focused on threats actively targeting enterprise environments — including external tenant impersonation, identity attacks, EDR evasion, and living-off-the-land techniques.
+Detection engineering and threat hunting content for Microsoft Sentinel and Microsoft Defender XDR, focused on threats actively targeting enterprise environments: identity attacks, EDR evasion, living-off-the-land techniques, data exfiltration, and AI-driven autonomous attacks.
+
+Everything is built and tested in an Azure homelab (Windows and Linux endpoints onboarded to Defender and Sentinel) against simulated attacker activity before being published.
+
+---
+
+## 📸 Examples
+
+**🖥️ Detection Overview:** alerts by severity and tactic, top alert types, alerts over time, and the top commands, files and IOCs pulled from alerts.
+
+![Detection Overview](images/detection-overview.png)
+
+**🛡️ EDR Dashboard:** antivirus detections, EDR evasions, Defender health with tamper protection, and sensor coverage.
+
+![EDR Dashboard](images/edr-dashboard.png)
 
 ---
 
 ## 🔍 What's Inside
 
 ### ⚡ Custom Detection Rules
-> Production-ready analytics rules for Sentinel and Defender XDR — high-fidelity detections with tuned false-positive rates, entity mapping, and response guidance.
+> Analytics rules for Sentinel and Defender XDR: high-fidelity detections with tuned false-positive rates, entity mapping and response guidance.
 
 ### 🎯 Threat Hunting Queries
 > Proactive queries to hunt for suspicious activity across the environment:
-- **EDR Evasion & Defense Evasion** — BYOVD, ASR bypass, Defender tampering
-- **Identity Attacks** — Password spray, MFA fatigue, impossible travel, risky sign-ins
-- **Data Exfiltration** — Sensitive file downloads, mass OneDrive/SharePoint access
-- **Living-Off-the-Land** — PowerShell abuse, LOLBin misuse, obfuscated commands
-- **+ More**
+- **🧱 EDR & Defense Evasion:** BYOVD, ASR bypass, Defender tampering
+- **🔑 Identity Attacks:** password spray, MFA fatigue, impossible travel, risky sign-ins
+- **📤 Data Exfiltration:** sensitive file downloads, mass OneDrive/SharePoint access
+- **🪤 Living-Off-the-Land:** PowerShell abuse, LOLBin misuse, obfuscated commands
+- **🤖 AI & Autonomous Attacks:** LLM API misuse, offensive AI tooling, machine-speed discovery, scanning and sign-in spraying
+- **➕ More**
+
+---
 
 ## ⚖️ Detection Rules vs Threat Hunts
 
-Both are needed — they solve different problems.
+Both are needed. They solve different problems.
 
 | | 🚨 Detection Rules | 🔍 Threat Hunts |
 | --- | --- | --- |
 | **Fires as** | Scheduled alert | Workbook query |
-| **Precision** | High — one match = act | Moderate — needs analyst context |
-| **Purpose** | Catch known-bad patterns automatically | Proactively find what no one's written a signature for yet |
-| **Response** | Immediate, often auto-response | Review, tune, and pivot |
-| **Examples** | Break-glass account use, sign-in from IOC, credential file exfil to malicious IP | Suspicious PowerShell scoring, LOLBin abuse, HTTP+Tor download correlation |
+| **Precision** | High: one match = act | Moderate: needs analyst context |
+| **Purpose** | Catch known-bad patterns automatically | Find what no one has written a signature for yet |
+| **Response** | Immediate, often automated | Review, tune and pivot |
+| **Examples** | Break-glass account use, sign-in from IOC, honeytoken use | Suspicious PowerShell scoring, LOLBin abuse, machine-speed discovery |
 
-- **Detection rules** pinpoint known-bad activity — they demand attention the moment they fire.
-- **Threat hunts** surface the noisier activity — a proactive way to find what automation misses and techniques that slip past existing signatures.
+- **Detection rules** pinpoint known-bad activity and demand attention the moment they fire.
+- **Threat hunts** surface the noisier activity, finding what automation misses and techniques that slip past existing detections.
 
 ---
 
-### 📊 Workbooks & Dashboards
+## 📊 Workbooks & Dashboards
 
 | Workbook | Purpose | When to use |
 | --- | --- | --- |
-| **🖥️ Security Operations** | Detection overview (alerts by severity, technique, status), EDR Dashboard (AV detections, EDR evasions, Defender sensor health and coverage), ASR Dashboard (blocks vs audits, top rules, audit-only rules ready to enforce) | Daily/weekly proactive review |
-| **🚨 Incident Response** | Unified, risk-scored timeline of suspicious activity per device, user, or data exfil path — surfaces activity that never became an alert | Active incident, first response |
+| **🖥️ Security Operations** | Detection Overview, EDR Overview (AV detections, EDR evasions, Defender health, ASR blocks vs audits), KPI Metrics and Threat Hunting | Daily/weekly proactive review |
+| **🎯 Threat Hunting** | Daily Hunts for known attacker techniques, plus AI & Autonomous Threats for LLM misuse and machine-speed attacks | Start of shift, proactive hunting |
+| **🚨 Incident Response** | Unified, risk-scored timeline of suspicious activity per device, user or data exfil path, surfacing activity that never became an alert | Active incident, first response |
 | **🔎 Digital Forensics** | Device-scoped timelines: process lineage, file/registry/network activity, persistence inventory | Post-incident deep investigation |
 
-> Workbooks do not replace alert triage. Alerts and incidents should still be investigated — the workbooks support deeper investigation.
+> ⚠️ Workbooks do not replace alert triage. Alerts and incidents should still be investigated; the workbooks support deeper investigation.
 
 ---
 
-### 🤖 SOAR Playbooks — *coming soon*
+## 🤖 SOAR Playbooks
 
-> Logic App workflows for automated response — device isolation, session revocation, IOC block list management, and malicious sender blocking via Microsoft Graph API.
+| Playbook | What it does |
+| --- | --- |
+| **🍯 Honeytoken Isolation** | Contains any device, account or IP that touches a decoy: collects evidence, isolates the device, disables real users and blocks external IPs, with Teams approval for protected assets |
+| **📧 Malicious Sender Blocking** | Blocks malicious senders through the Tenant Allow/Block List using Microsoft Graph |
+| **➕ More coming** | Session revocation, IOC block list management |
 
 ---
 
@@ -63,24 +85,25 @@ Both are needed — they solve different problems.
 - Microsoft Sentinel
 - Microsoft Defender XDR (Endpoint, Identity, Office 365, Cloud Apps)
 - KQL (Kusto Query Language)
-- Azure Logic Apps
+- Azure Logic Apps and Microsoft Graph API
 
 ---
 
 ## 📚 Standards & Conventions
 
-- **MITRE ATT&CK mapping** on all detections
-- **Parameterized time range and device/user filters** on all workbooks
-- **Severity scoring** based on confidence and impact
+- **🧪 Lab-validated:** every query is tested against simulated activity in the Azure homelab
+- **🎛️ Parameterized:** time range and device/user filters on all workbooks
+- **🔴 Severity scoring** based on confidence and impact
+- **🔢 Versioned:** workbooks start at 1.0 and increment by 0.5 for new versions
 
 ---
 
 ## ⚠️ Disclaimer
 
-All queries are provided as-is for educational and defensive purposes. Content is sanitized and does not contain any organization-specific information. Test in a non-production environment before deploying.
+All queries are provided as-is for educational and defensive purposes. Content is sanitized and contains no organization-specific information. Test in a non-production environment before deploying.
 
 ---
 
 ## 📫 Connect
 
-Feel free to reach out on [LinkedIn](https://www.linkedin.com/in/nguyentimmy/) for questions, feedback, or collaboration.
+Reach out on [LinkedIn](https://www.linkedin.com/in/nguyentimmy/) for questions, feedback or collaboration.
