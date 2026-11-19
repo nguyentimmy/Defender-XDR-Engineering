@@ -36,6 +36,7 @@ Covers both places an AI attack can show up: agents running **on your devices**,
 | 🧠 **LLM Usage** | Overview Tiles, LLM API Calls Over Time, LLM Calls by Provider, Top LLM API Callers, Unsanctioned LLM Activity |
 | 🕵️ **On-Device Agents** | LLM-Driven Offensive Agent, Recon Toolchain Burst, AI Agent Framework Activity, Local LLM Runtimes |
 | 🌐 **Inbound Machine-Speed Activity** | Inbound Scan & Sweep Bursts, Machine-Speed Logon Failures, Web Request Bursts, WAF Request Bursts |
+| ☁️ **Cloud Identity** | Cloud Sign-In Bursts, Distributed & Low-and-Slow Sign-Ins |
 | ⚡ **Post-Foothold** | Machine-Speed Discovery |
 
 ---
@@ -47,14 +48,14 @@ Covers both places an AI attack can show up: agents running **on your devices**,
 | `TimeRange` | Time Range | Both workbooks |
 | `DeviceName` | Hostname | Both workbooks |
 
-Hostname is optional. Leave it empty to search all devices.
+Hostname is optional. Leave it empty to search all devices. Cloud Identity panels are tenant-wide and ignore it.
 
 ---
 
 ## 🔄 Workflow
 
 1. 📅 **Daily Hunts:** run at the start of a shift and work through each Device Hunt.
-2. 🤖 **AI & Autonomous Threats:** check the overview tiles. Then review any 🔴 **Critical** or 🟠 **High** rows in On-Device Agents, Inbound Machine-Speed Activity and Post-Foothold.
+2. 🤖 **AI & Autonomous Threats:** check the overview tiles. Then review any 🔴 **Critical** or 🟠 **High** rows in On-Device Agents, Inbound Machine-Speed Activity, Cloud Identity and Post-Foothold.
 3. 🔍 **Pivot:** set Hostname to a flagged device, then open the Device Compromise IR workbook for a full timeline.
 4. 🚨 **Escalate:** confirmed findings become incidents, and repeat findings become analytic rules.
 
