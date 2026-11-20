@@ -1,4 +1,4 @@
-# 🤖 AI Autonomous Threats
+# 🤖 AI & Autonomous Threats 2.0
 
 A Microsoft Sentinel workbook that tracks LLM API usage and AI-driven attack activity across onboarded devices. It answers four questions: which devices and processes talk to LLM APIs, which of those are unsanctioned, which hosts combine LLM access with offensive tooling, and where AI agent frameworks or local models are being installed.
 
@@ -10,7 +10,7 @@ A Microsoft Sentinel workbook that tracks LLM API usage and AI-driven attack act
 
 | # | Panel | Visualization | Purpose |
 |---|---|---|---|
-| 1 | 📊 Overview Tiles | Tiles | LLM calls, devices, unsanctioned callers, offensive tool runs, agent hosts |
+| 1 | 📊 Overview Tiles | Tiles | LLM calls, devices, unsanctioned callers, offensive tool runs, agent hosts, sensitive files served |
 | 2 | 📈 LLM API Calls Over Time | Time chart | Usage trend by provider |
 | 3 | 🥧 LLM Calls by Provider | Pie | Which AI providers are in use |
 | 4 | 🏆 Top LLM API Callers | Grid | Every process calling LLM APIs, sanctioned vs. unsanctioned |
@@ -26,8 +26,13 @@ A Microsoft Sentinel workbook that tracks LLM API usage and AI-driven attack act
 | 14 | ⚡ Machine-Speed Discovery | Grid | 8+ distinct discovery commands from one parent process within 60 seconds |
 | 15 | ☁️ Cloud Sign-In Bursts | Grid | Entra ID spraying and brute force at machine speed, plus valid-password and success flags |
 | 16 | 🐢 Distributed & Low-and-Slow Sign-Ins | Grid | Attacks that rotate IPs or slow down to stay under burst thresholds |
+| 17 | 🔓 Sensitive Path Probes | Grid | Requests for `/.env`, `/.git/`, cloud keys, configs and backups, and whether any were served |
+| 18 | 🔗 Recon to Sign-In | Grid | IPs that probed sensitive paths and then tried to sign in to Entra ID |
+| 19 | 🔌 MCP Server Config Changes | Grid | New or changed MCP configs for Claude, Cursor, VS Code and Windsurf, ranked by what wrote them |
+| 20 | 🔑 LLM API Key Harvesting | Grid | Searches for LLM API keys, `.env` sweeps, AI credential file access and secret scanners |
+| 21 | 🐳 Offensive Containers | Grid | Docker pulling or running offensive AI agents, C2 frameworks and recon toolkits |
 
-Panels 10 to 13, 15 and 16 cover agents running on the attacker's own infrastructure. Their LLM calls never touch your network, so you detect them by the speed and volume of what reaches you.
+Panels 10 to 13 and 15 to 18 cover agents running on the attacker's own infrastructure. Their LLM calls never touch your network, so you detect them by the speed and volume of what reaches you.
 
 ---
 
@@ -60,14 +65,21 @@ let ToolRuns = DeviceProcessEvents
     | where isempty(TargetDevice) or DeviceName has TargetDevice
     | where FileName in~ (Tools)
         or (FileName startswith "python" and ProcessCommandLine has "sqlmap");
-union
+let SensitivePaths = @"(?i)(/\.env|/\.git(/|$)|/\.aws/|/\.ssh/|/\.svn/|/\.hg/|/\.ds_store|/\.htpasswd|/\.htaccess|/\.npmrc|/\.dockercfg|/\.docker/|/\.vscode/|/\.idea/|/\.kube/|wp-config\.php|/config\.(php|json|ya?ml|ini)|/web\.config|/appsettings(\.\w+)?\.json|/phpinfo|/server-status|/actuator|/docker-compose\.ya?ml|id_rsa|\.(sql|bak|old|backup|swp|tar|tgz|zip)$|/backup)";
+union isfuzzy=true
     (LLM | summarize Value = tolong(count()) | extend Metric = "🤖 LLM API Calls", Order = 1),
     (LLM | summarize Value = tolong(dcount(DeviceName)) | extend Metric = "💻 Devices Using LLMs", Order = 2),
     (LLM | where not(IsSanctioned) | summarize Value = tolong(dcount(InitiatingProcessFileName)) | extend Metric = "⚠️ Unsanctioned Callers", Order = 3),
     (ToolRuns | summarize Value = tolong(count()) | extend Metric = "🔎 Offensive Tool Runs", Order = 4),
     (LLM | where not(IsSanctioned) | distinct DeviceId
         | join kind=inner (ToolRuns | distinct DeviceId) on DeviceId
-        | summarize Value = tolong(count()) | extend Metric = "🚨 Agent Hosts", Order = 5)
+        | summarize Value = tolong(count()) | extend Metric = "🚨 Agent Hosts", Order = 5),
+    (W3CIISLog
+        | where TimeGenerated {TimeRange}
+        | where isempty(TargetDevice) or Computer has TargetDevice
+        | where csUriStem matches regex SensitivePaths
+        | where scStatus startswith "2"
+        | summarize Value = tolong(count()) | extend Metric = "🔓 Sensitive Files Served", Order = 6)
 | sort by Order asc
 | project Metric, Value
 ```
@@ -844,11 +856,245 @@ union Distributed, LowSlow, SharedUA
 
 ---
 
+## 🔓 17. Sensitive Path Probes
+
+**Visualization:** Grid  ·  **Requires:** IIS logs in `W3CIISLog` (Azure Monitor Agent)
+
+Requests for files that should never be public: `/.env`, `/.git/`, cloud and SSH keys, app configs, backups and debug endpoints. Offensive AI agents check these within minutes of finding a site. Any **served** (2xx) path ranks Critical, because secrets may already be exposed.
+
+```kql
+let TargetDevice = trim(" ", "{DeviceName}");
+let MinPaths = 10;          // distinct sensitive paths for a machine-speed sweep
+let SweepMinutes = 10;
+let Allowlist = dynamic([]);   // approved vulnerability scanners
+let SensitivePaths = @"(?i)(/\.env|/\.git(/|$)|/\.aws/|/\.ssh/|/\.svn/|/\.hg/|/\.ds_store|/\.htpasswd|/\.htaccess|/\.npmrc|/\.dockercfg|/\.docker/|/\.vscode/|/\.idea/|/\.kube/|wp-config\.php|/config\.(php|json|ya?ml|ini)|/web\.config|/appsettings(\.\w+)?\.json|/phpinfo|/server-status|/actuator|/docker-compose\.ya?ml|id_rsa|\.(sql|bak|old|backup|swp|tar|tgz|zip)$|/backup)";
+W3CIISLog
+| where TimeGenerated {TimeRange}
+| where isempty(TargetDevice) or Computer has TargetDevice
+| where isnotempty(cIP) and cIP !in (Allowlist)
+| where csUriStem matches regex SensitivePaths
+| extend Status = tostring(scStatus)
+| extend Category = case(
+    csUriStem matches regex @"(?i)/\.(env|aws|ssh|npmrc|docker|dockercfg|kube)|id_rsa|\.htpasswd", "🔑 Secrets",
+    csUriStem matches regex @"(?i)/\.(git|svn|hg)", "🧬 Source Control",
+    csUriStem matches regex @"(?i)\.(sql|bak|old|backup|swp|tar|tgz|zip)$|/backup", "💾 Backups",
+    csUriStem matches regex @"(?i)phpinfo|server-status|actuator", "🩺 Debug/Admin",
+    "⚙️ Config")
+| summarize Requests = count(),
+            DistinctPaths = dcount(csUriStem),
+            Served = countif(Status startswith "2"),
+            ServedPaths = make_set_if(csUriStem, Status startswith "2", 20),
+            Categories = make_set(Category),
+            SamplePaths = make_set(csUriStem, 20),
+            UserAgents = make_set(csUserAgent, 5),
+            Sites = make_set(Computer, 5),
+            FirstSeen = min(TimeGenerated),
+            LastSeen = max(TimeGenerated)
+         by SourceIP = cIP
+| extend DurationMin = datetime_diff("minute", LastSeen, FirstSeen)
+| extend Pattern = case(
+    Served > 0, "🔓 File Served",
+    DistinctPaths >= MinPaths and DurationMin <= SweepMinutes, "⚡ Machine-Speed Sweep",
+    DistinctPaths >= 5, "🔍 Targeted Probe",
+    "👀 Single Probe")
+| extend SevRank = case(
+    Served > 0, 1,
+    DistinctPaths >= MinPaths and DurationMin <= SweepMinutes, 2,
+    DistinctPaths >= 5, 3,
+    4)
+| extend Severity = case(SevRank == 1, "🔴 Critical", SevRank == 2, "🟠 High", SevRank == 3, "🟡 Medium", "🔵 Low")
+| sort by SevRank asc, DistinctPaths desc
+| project FirstSeen, Severity, Pattern, SourceIP, Served, ServedPaths, DistinctPaths, Requests,
+          DurationMin, Categories, SamplePaths, UserAgents, Sites, LastSeen
+```
+
+---
+
+## 🔗 18. Recon to Sign-In
+
+**Visualization:** Grid  ·  **Requires:** IIS logs in `W3CIISLog` plus Entra ID sign-in logs
+
+IPs that probed sensitive paths and **then** tried to sign in to Entra ID. This is the chain an agent runs after finding credentials in an exposed file: recon, harvest, log in. Pair it with a decoy `/.env` holding honeytoken credentials to catch it in the act.
+
+```kql
+let TargetDevice = trim(" ", "{DeviceName}");
+let Allowlist = dynamic([]);   // corporate egress IPs, approved scanners
+let ValidPwCodes = dynamic(["50072", "50074", "50076", "50079", "50158", "53003"]);
+let SensitivePaths = @"(?i)(/\.env|/\.git(/|$)|/\.aws/|/\.ssh/|/\.svn/|/\.hg/|/\.ds_store|/\.htpasswd|/\.htaccess|/\.npmrc|/\.dockercfg|/\.docker/|/\.vscode/|/\.idea/|/\.kube/|wp-config\.php|/config\.(php|json|ya?ml|ini)|/web\.config|/appsettings(\.\w+)?\.json|/phpinfo|/server-status|/actuator|/docker-compose\.ya?ml|id_rsa|\.(sql|bak|old|backup|swp|tar|tgz|zip)$|/backup)";
+let Probers = W3CIISLog
+    | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or Computer has TargetDevice
+    | where isnotempty(cIP) and cIP !in (Allowlist)
+    | where csUriStem matches regex SensitivePaths
+    | summarize FirstProbe = min(TimeGenerated),
+                ProbedPaths = dcount(csUriStem),
+                Served = countif(tostring(scStatus) startswith "2"),
+                SamplePaths = make_set(csUriStem, 15),
+                Sites = make_set(Computer, 5)
+             by IPAddress = cIP;
+union isfuzzy=true SigninLogs, AADNonInteractiveUserSignInLogs
+| where TimeGenerated {TimeRange}
+| where IPAddress in ((Probers | project IPAddress))
+| lookup kind=inner (Probers | project IPAddress, FirstProbe) on IPAddress
+| where TimeGenerated >= FirstProbe
+| summarize SignIns = count(),
+            Successes = countif(ResultType == "0"),
+            ValidPw = countif(ResultType in (ValidPwCodes)),
+            Users = make_set(UserPrincipalName, 20),
+            SuccessUsers = make_set_if(UserPrincipalName, ResultType == "0", 10),
+            Apps = make_set(AppDisplayName, 10),
+            FirstSignIn = min(TimeGenerated),
+            LastSeen = max(TimeGenerated)
+         by IPAddress
+| lookup kind=inner Probers on IPAddress
+| extend MinutesToSignIn = datetime_diff("minute", FirstSignIn, FirstProbe)
+| extend Pattern = case(
+    Successes > 0, "🔓 Probe → Successful Sign-In",
+    ValidPw > 0, "🔑 Probe → Valid Password",
+    "🔁 Probe → Failed Sign-In")
+| extend SevRank = case(Successes > 0, 1, ValidPw > 0 or Served > 0, 2, 3)
+| extend Severity = case(SevRank == 1, "🔴 Critical", SevRank == 2, "🟠 High", "🟡 Medium")
+| sort by SevRank asc, MinutesToSignIn asc
+| project FirstProbe, Severity, Pattern, IPAddress, MinutesToSignIn, Served, ProbedPaths,
+          SamplePaths, SignIns, Successes, SuccessUsers, ValidPw, Users, Apps, Sites, FirstSignIn, LastSeen
+```
+
+---
+
+## 🔌 19. MCP Server Config Changes
+
+**Visualization:** Grid
+
+New or changed MCP (Model Context Protocol) config files for Claude Desktop, Claude Code, Cursor, VS Code and Windsurf. An attacker who adds a malicious MCP server gets a tool that runs every time the user's AI app starts. A change written by a shell or script ranks higher than one made by the AI app or editor itself.
+
+```kql
+let TargetDevice = trim(" ", "{DeviceName}");
+let McpFiles = dynamic(["claude_desktop_config.json", "mcp.json", ".mcp.json", "mcp_config.json"]);
+let McpFolders = @"(?i)[\\/](Claude|\.claude|\.cursor|\.vscode|Code|windsurf|\.codeium)[\\/]";
+let AppProcs = dynamic([
+    "claude.exe", "claude", "cursor.exe", "cursor", "code.exe", "code", "windsurf.exe", "windsurf",
+    "explorer.exe", "notepad.exe", "notepad++.exe", "vim", "nano", "gedit"]);
+let ScriptProcs = dynamic([
+    "powershell.exe", "pwsh.exe", "pwsh", "cmd.exe", "wscript.exe", "cscript.exe", "mshta.exe",
+    "python.exe", "python3", "python", "node.exe", "node", "bash", "sh", "zsh", "curl", "wget"]);
+DeviceFileEvents
+| where TimeGenerated {TimeRange}
+| where isempty(TargetDevice) or DeviceName has TargetDevice
+| where ActionType in ("FileCreated", "FileModified", "FileRenamed")
+| where FileName =~ ".mcp.json"                                    // Claude Code project-level config, any folder
+    or (FileName in~ (McpFiles) and FolderPath matches regex McpFolders)
+| extend Writer = tolower(InitiatingProcessFileName)
+| extend WriterType = case(
+    Writer in~ (ScriptProcs), "🐚 Shell / Script",
+    Writer in~ (AppProcs), "🧩 AI App / Editor",
+    "❓ Other Process")
+| extend SevRank = case(WriterType has "Shell", 2, WriterType has "Other", 3, 4)
+| extend Severity = case(SevRank == 2, "🟠 High", SevRank == 3, "🟡 Medium", "🔵 Low")
+| sort by SevRank asc, TimeGenerated desc
+| project TimeGenerated, Severity, WriterType, DeviceName, ActionType, FolderPath,
+          InitiatingProcessAccountName, InitiatingProcessFileName, InitiatingProcessCommandLine,
+          InitiatingProcessParentFileName, SHA256
+```
+
+---
+
+## 🔑 20. LLM API Key Harvesting
+
+**Visualization:** Grid
+
+Searches for LLM API keys and AI tool credentials. Stolen keys feed "LLMjacking" (running an attacker's workload on your AI account) and give an agent its own model access. Four patterns:
+
+- **Key search:** grep, findstr or Select-String looking for key prefixes or key variable names
+- **Env file sweep:** recursive searches for `.env` files across a disk
+- **AI credential file access:** shell tools reading, copying, encoding or uploading Claude, Codex or Copilot credential files
+- **Secret scanner:** tools like trufflehog or gitleaks, which attackers also use
+
+```kql
+let TargetDevice = trim(" ", "{DeviceName}");
+let KeyPrefixes = @"sk-(ant|proj|or)-";
+let KeyNames = dynamic([
+    "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY",
+    "GOOGLE_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_KEY", "OPENROUTER_API_KEY",
+    "DEEPSEEK_API_KEY", "XAI_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY", "COHERE_API_KEY"]);
+let SearchTools = dynamic(["grep", "egrep", "rg", "ag", "ack", "findstr.exe", "strings", "awk"]);
+let SecretScanners = dynamic(["trufflehog", "trufflehog.exe", "gitleaks", "gitleaks.exe", "noseyparker", "detect-secrets"]);
+let AiCredFiles = @"(?i)\.claude[\\/]\.credentials\.json|\.codex[\\/]auth\.json|github-copilot[\\/](hosts|apps)\.json";
+let ReadTools = dynamic(["cat", "cp", "scp", "tar", "zip", "base64", "curl", "wget", "xxd",
+    "type", "copy", "xcopy", "robocopy", "certutil.exe", "powershell.exe", "pwsh.exe", "pwsh"]);
+let ExcludedAccounts = dynamic([]);   // approved secret-scanning service accounts
+DeviceProcessEvents
+| where TimeGenerated {TimeRange}
+| where isempty(TargetDevice) or DeviceName has TargetDevice
+| where AccountName !in~ (ExcludedAccounts)
+| extend Cmd = ProcessCommandLine, Proc = tolower(FileName)
+| extend HasKey = Cmd has_any (KeyNames) or Cmd matches regex KeyPrefixes
+| extend Pattern = case(
+    Proc in~ (SearchTools) and HasKey, "🔍 Key Search",
+    Proc in~ ("powershell.exe", "pwsh.exe", "pwsh") and Cmd has "Select-String" and HasKey, "🔍 Key Search",
+    Proc in~ ("find", "fd") and Cmd matches regex @"-name\s+['""]?\*?\.env\b", "🗂️ Env File Sweep",
+    Cmd has_any ("Get-ChildItem", "gci") and Cmd has "Recurse" and Cmd contains ".env", "🗂️ Env File Sweep",
+    Proc in~ (ReadTools) and Cmd matches regex AiCredFiles, "🪪 AI Credential File Access",
+    Proc in~ (SecretScanners), "🧪 Secret Scanner",
+    "")
+| where isnotempty(Pattern)
+| extend SevRank = case(Pattern has "Credential", 1, Pattern has_any ("Key Search", "Env File"), 2, 3)
+| extend Severity = case(SevRank == 1, "🔴 Critical", SevRank == 2, "🟠 High", "🟡 Medium")
+| sort by SevRank asc, TimeGenerated desc
+| project TimeGenerated, Severity, Pattern, DeviceName, AccountName, FileName, ProcessCommandLine,
+          InitiatingProcessFileName, InitiatingProcessCommandLine, FolderPath
+```
+
+---
+
+## 🐳 21. Offensive Containers
+
+**Visualization:** Grid
+
+Docker or Podman pulling or running offensive images: recon toolkits, C2 frameworks and offensive AI agents. ARTEX-style agents run in containers, so the container launch is often the clearest host-level signal. A host that also makes unsanctioned LLM calls ranks Critical.
+
+```kql
+let TargetDevice = trim(" ", "{DeviceName}");
+let ContainerCli = dynamic(["docker", "docker.exe", "podman", "podman.exe", "nerdctl", "docker-compose", "docker-compose.exe"]);
+let AgentImages = @"artex|scopeweaver|scopesentry|pentestgpt|hexstrike";
+let C2Images = @"sliver|bcsecurity|mythic|havoc|covenant|metasploit";
+let ReconImages = @"kalilinux/kali|kali-rolling|parrotsec/|blackarchlinux|projectdiscovery/|instrumentisto/nmap|sqlmapproject|frapsoft/nikto|trickest/|zaproxy";
+let LLMDomains = dynamic([
+    "api.anthropic.com", "api.openai.com", "openai.azure.com", "generativelanguage.googleapis.com",
+    "api.mistral.ai", "api.groq.com", "openrouter.ai", "api.deepseek.com", "api.x.ai"]);
+let SanctionedProcs = dynamic(["msedge.exe", "chrome.exe", "firefox.exe", "claude.exe", "chatgpt.exe", "code.exe"]);
+let LLMHosts = DeviceNetworkEvents
+    | where TimeGenerated {TimeRange}
+    | where ActionType == "ConnectionSuccess"
+    | where RemoteUrl has_any (LLMDomains) or ipv4_is_in_range(RemoteIP, "160.79.104.0/23")
+    | where InitiatingProcessFileName !in~ (SanctionedProcs)
+    | distinct DeviceId;
+DeviceProcessEvents
+| where TimeGenerated {TimeRange}
+| where isempty(TargetDevice) or DeviceName has TargetDevice
+| where FileName in~ (ContainerCli)
+| where ProcessCommandLine has_any ("pull", "run", "create", "compose", "up", "build")
+| extend Cmd = tolower(ProcessCommandLine)
+| extend Category = case(
+    Cmd matches regex AgentImages, "🤖 Offensive AI Agent",
+    Cmd matches regex C2Images, "📡 C2 Framework",
+    Cmd matches regex ReconImages, "🔎 Recon Toolkit",
+    "")
+| where isnotempty(Category)
+| extend LLMHost = DeviceId in (LLMHosts)
+| extend SevRank = case(LLMHost, 1, Category has_any ("Agent", "C2"), 2, 3)
+| extend Severity = case(SevRank == 1, "🔴 Critical", SevRank == 2, "🟠 High", "🟡 Medium")
+| sort by SevRank asc, TimeGenerated desc
+| project TimeGenerated, Severity, Category, LLMHost, DeviceName, AccountName, ProcessCommandLine,
+          InitiatingProcessFileName, InitiatingProcessCommandLine, FolderPath
+```
+
+---
+
 ## 🔧 Enabling Web & WAF Logs
 
-Panels 12 and 13 stay empty until these logs reach the workspace.
+Panels 12, 13, 17 and 18 and the Sensitive Files Served tile stay empty until these logs reach the workspace.
 
-**🌐 IIS logs (panel 12)**
+**🌐 IIS logs (panels 12, 17 and 18)**
 1. Make sure the web server VM has the Azure Monitor Agent.
 2. In Azure Monitor, create a **Data Collection Rule**, add the VM as a resource, and add an **IIS Logs** data source.
 3. Send it to your Sentinel workspace. Logs appear in `W3CIISLog` within about 15 minutes.
@@ -870,8 +1116,15 @@ Panels 12 and 13 stay empty until these logs reach the workspace.
 - **Developers:** Panel 8 at Low severity is visibility, not an alert. Developers installing `openai` or `langchain` is normal.
 - **Discovery noise:** Login scripts, inventory tools and admin automation can run discovery commands quickly. Add their parent process to `ExcludedParents` in panel 14 rather than raising `MinDistinct`, so real agent bursts still fire.
 - **Corporate IPs:** Add corporate egress IPs and VPN gateways to `Allowlist` in panels 15 and 16. Real users' typos and successful sign-ins from a shared IP would otherwise look like a spray that succeeded.
-- **Detection rules:** Panels 6, 7 and 10 to 16 aggregate, so they work as scheduled Sentinel analytic rules rather than Defender custom detections.
+- **Detection rules:** Panels 6, 7 and 10 to 18 aggregate, so they work as scheduled Sentinel analytic rules rather than Defender custom detections. Panels 19 to 21 return one row per event, so they also work as Defender custom detections.
 - **Burst thresholds:** Each of panels 10 to 13 has its thresholds in `let` statements at the top (`MinPorts`, `MinFailures`, `MinRequests` and so on). Start with the defaults, then raise them if normal traffic shows up.
 - **Allowlists:** Add vulnerability scanners, monitoring tools, load balancers and health probes to `Allowlist` in panels 10 to 13, or they'll show as bursts.
 - **Blocked inbound connections:** Panel 10 uses `FirewallInboundConnectionBlocked`, which needs Windows Firewall auditing for dropped packets turned on. Without it, the panel only sees accepted connections.
 - **Data sources:** Panels 10 and 11 work with Defender data alone. Panels 12 and 13 stay empty unless you collect IIS or Application Gateway WAF logs. If your WAF uses resource-specific tables, switch panel 13 to `AGWFirewallLogs`.
+- **Sensitive path list:** Edit `SensitivePaths` in the overview tiles and panels 17 and 18 to match your stack. Remove paths your apps serve on purpose (for example a real `/backup` route or `/actuator/health`), or they'll show as Served.
+- **Internet scanner noise:** Any public site gets constant probes for `/.env` and `/.git/`. Low and Medium rows in panel 17 are background noise; focus on Served, Machine-Speed Sweep and anything that also appears in panel 18.
+- **Web servers behind a proxy:** If IIS sits behind Application Gateway or a load balancer, `cIP` is the proxy's address, not the client's. Log the `X-Forwarded-For` header as a custom IIS field and use it instead, or panel 18 won't match sign-in IPs.
+- **Honeytoken decoy:** Serve a fake `/.env` containing honeytoken credentials. A probe in panel 17 followed by a honeytoken sign-in in panel 18 is a confirmed attacker, and it triggers the Honeytoken Isolation playbook.
+- **MCP configs:** AI apps rewrite their own config when users add servers through the app, so those rows rank Low. A config written by a shell or script is the one to investigate. Open the file and check every server's `command` and `args`.
+- **Key harvesting:** Developers set API keys in environment variables all the time, so panel 20 only matches key names when a search tool runs, not when a key is exported. Add approved secret-scanning pipelines to `ExcludedAccounts`.
+- **Offensive containers:** Pentest and red team hosts will show here. Exclude them by hostname or device tag. The image lists are regex patterns, so add new tool names as they appear.
