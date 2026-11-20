@@ -1,4 +1,4 @@
-# 🤖 AI & Autonomous Threats 1.0
+# 🤖 AI Autonomous Threats
 
 A Microsoft Sentinel workbook that tracks LLM API usage and AI-driven attack activity across onboarded devices. It answers four questions: which devices and processes talk to LLM APIs, which of those are unsanctioned, which hosts combine LLM access with offensive tooling, and where AI agent frameworks or local models are being installed.
 
