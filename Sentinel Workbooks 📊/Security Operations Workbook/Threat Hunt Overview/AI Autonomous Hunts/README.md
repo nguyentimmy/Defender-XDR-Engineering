@@ -1,4 +1,4 @@
-# 🤖 AI & Autonomous Threats 2.0
+# 🤖 AI & Autonomous Threats 3.0
 
 A Microsoft Sentinel workbook that tracks LLM API usage and AI-driven attack activity across onboarded devices. It answers four questions: which devices and processes talk to LLM APIs, which of those are unsanctioned, which hosts combine LLM access with offensive tooling, and where AI agent frameworks or local models are being installed.
 
@@ -12,27 +12,27 @@ A Microsoft Sentinel workbook that tracks LLM API usage and AI-driven attack act
 |---|---|---|---|
 | 1 | 📊 Overview Tiles | Tiles | LLM calls, devices, unsanctioned callers, offensive tool runs, agent hosts, sensitive files served |
 | 2 | 📈 LLM API Calls Over Time | Time chart | Usage trend by provider |
-| 3 | 🥧 LLM Calls by Provider | Pie | Which AI providers are in use |
-| 4 | 🏆 Top LLM API Callers | Grid | Every process calling LLM APIs, sanctioned vs. unsanctioned |
-| 5 | ⚠️ Unsanctioned LLM Activity | Grid | Scripts, CLIs and unknown binaries calling LLM APIs |
-| 6 | 🤖 LLM-Driven Offensive Agent | Grid | Hosts with unsanctioned LLM calls **and** offensive tooling |
-| 7 | 🔎 Recon Toolchain Burst | Grid | 3+ offensive tools from one parent within an hour |
-| 8 | 🧩 AI Agent Framework Activity | Grid | Installs of agent frameworks and offensive AI tools |
-| 9 | 🖥️ Local LLM Runtimes | Grid | Ollama, LM Studio and llama.cpp running on devices |
-| 10 | 🌐 Inbound Scan & Sweep Bursts | Grid | One source hitting many ports or devices within minutes |
-| 11 | 🔨 Machine-Speed Logon Failures | Grid | Brute force and spraying at machine speed, plus any later success |
-| 12 | 🌍 Web Request Bursts | Grid | Fuzzing, crawling and tool user agents against IIS web servers |
-| 13 | 🛡️ WAF Request Bursts | Grid | The same pattern from Azure Application Gateway WAF logs |
-| 14 | ⚡ Machine-Speed Discovery | Grid | 8+ distinct discovery commands from one parent process within 60 seconds |
-| 15 | ☁️ Cloud Sign-In Bursts | Grid | Entra ID spraying and brute force at machine speed, plus valid-password and success flags |
-| 16 | 🐢 Distributed & Low-and-Slow Sign-Ins | Grid | Attacks that rotate IPs or slow down to stay under burst thresholds |
-| 17 | 🔓 Sensitive Path Probes | Grid | Requests for `/.env`, `/.git/`, cloud keys, configs and backups, and whether any were served |
-| 18 | 🔗 Recon to Sign-In | Grid | IPs that probed sensitive paths and then tried to sign in to Entra ID |
-| 19 | 🔌 MCP Server Config Changes | Grid | New or changed MCP configs for Claude, Cursor, VS Code and Windsurf, ranked by what wrote them |
-| 20 | 🔑 LLM API Key Harvesting | Grid | Searches for LLM API keys, `.env` sweeps, AI credential file access and secret scanners |
-| 21 | 🐳 Offensive Containers | Grid | Docker pulling or running offensive AI agents, C2 frameworks and recon toolkits |
+| 3 | ⚠️ Unsanctioned LLM Activity | Grid | Scripts, CLIs and unknown binaries calling LLM APIs |
+| 4 | 🤖 LLM-Driven Offensive Agent | Grid | Hosts with unsanctioned LLM calls **and** offensive tooling |
+| 5 | 🔎 Recon Toolchain Burst | Grid | 3+ offensive tools from one parent within an hour |
+| 6 | 🧩 AI Agent Framework Activity | Grid | Installs of agent frameworks and offensive AI tools |
+| 7 | 🌐 Inbound Scan & Sweep Bursts | Grid | One source hitting many ports or devices within minutes |
+| 8 | 🔨 Machine-Speed Logon Failures | Grid | Brute force and spraying at machine speed, plus any later success |
+| 9 | 🛡️ WAF Request Bursts | Grid | Fuzzing, crawling and tool user agents in Azure Application Gateway WAF logs |
+| 10 | ⚡ Machine-Speed Discovery | Grid | 8+ distinct discovery commands from one parent process within 60 seconds |
+| 11 | ☁️ Cloud Sign-In Bursts | Grid | Entra ID spraying and brute force at machine speed, plus valid-password and success flags |
+| 12 | 🔓 Sensitive Path Probes | Grid | Requests for `/.env`, `/.git/`, cloud keys, configs and backups, and whether any were served |
+| 13 | 🔗 Recon to Sign-In | Grid | IPs that probed sensitive paths and then tried to sign in to Entra ID |
+| 14 | 🔌 MCP Server Config Changes | Grid | New or changed MCP configs for Claude, Cursor, VS Code and Windsurf, ranked by what wrote them |
+| 15 | 🔑 LLM API Key Harvesting | Grid | Searches for LLM API keys, `.env` sweeps, AI credential file access and secret scanners |
+| 16 | 🐳 Offensive Containers | Grid | Docker pulling or running offensive AI agents, C2 frameworks and recon toolkits |
+| 17 | 🎯 ARTEX Indicator Hits | Grid | Known ARTEX user agents, probe markers, host artifacts, hashes and toolkit domains |
+| 18 | 🐚 Web & Database Services Spawning Shells | Grid | IIS, Apache, nginx, Tomcat or SQL Server starting a shell or download tool |
+| 19 | 🪪 App & Service Principal Abuse | Grid | Apps assigning themselves roles, adding their own credentials, or having secrets guessed |
+| 20 | ⏱️ Fixed-Rhythm Password Spray | Grid | Sprays sent at a steady machine rhythm, scored by how regular the gaps are |
+| 21 | 📞 Callbacks to Webhook, OAST & Tunnel Services | Grid | Hosts reaching interactsh, webhook bins, DNS loggers, ngrok or Cloudflare tunnels |
 
-Panels 10 to 13 and 15 to 18 cover agents running on the attacker's own infrastructure. Their LLM calls never touch your network, so you detect them by the speed and volume of what reaches you.
+Panels 7 to 9 and 11 to 13 cover agents running on the attacker's own infrastructure. Their LLM calls never touch your network, so you detect them by the speed and volume of what reaches you.
 
 ---
 
@@ -123,80 +123,7 @@ DeviceNetworkEvents
 
 ---
 
-## 🥧 3. LLM Calls by Provider
-
-**Visualization:** Pie chart
-
-```kql
-let TargetDevice = trim(" ", "{DeviceName}");
-let LLMDomains = dynamic([
-    "api.anthropic.com", "api.openai.com", "openai.azure.com",
-    "generativelanguage.googleapis.com", "aiplatform.googleapis.com",
-    "api.mistral.ai", "api.groq.com", "openrouter.ai", "api.together.xyz",
-    "api.deepseek.com", "api.x.ai", "api.cohere.com", "api.cohere.ai",
-    "api.perplexity.ai", "bedrock-runtime"]);
-DeviceNetworkEvents
-| where TimeGenerated {TimeRange}
-| where isempty(TargetDevice) or DeviceName has TargetDevice
-| where ActionType == "ConnectionSuccess"
-| where RemoteUrl has_any (LLMDomains) or ipv4_is_in_range(RemoteIP, "160.79.104.0/23")
-| extend Provider = case(
-    RemoteUrl has "anthropic" or ipv4_is_in_range(RemoteIP, "160.79.104.0/23"), "Anthropic",
-    RemoteUrl has "openai.azure.com", "Azure OpenAI",
-    RemoteUrl has "openai", "OpenAI",
-    RemoteUrl has "googleapis", "Google",
-    RemoteUrl has "mistral", "Mistral",
-    RemoteUrl has "groq", "Groq",
-    RemoteUrl has "openrouter", "OpenRouter",
-    RemoteUrl has "together", "Together",
-    RemoteUrl has "deepseek", "DeepSeek",
-    RemoteUrl contains "api.x.ai", "xAI",
-    RemoteUrl has "cohere", "Cohere",
-    RemoteUrl has "perplexity", "Perplexity",
-    RemoteUrl has "bedrock", "AWS Bedrock",
-    "Other")
-| summarize Calls = count() by Provider
-| sort by Calls desc
-```
-
----
-
-## 🏆 4. Top LLM API Callers
-
-**Visualization:** Grid
-
-```kql
-let TargetDevice = trim(" ", "{DeviceName}");
-let LLMDomains = dynamic([
-    "api.anthropic.com", "api.openai.com", "openai.azure.com",
-    "generativelanguage.googleapis.com", "aiplatform.googleapis.com",
-    "api.mistral.ai", "api.groq.com", "openrouter.ai", "api.together.xyz",
-    "api.deepseek.com", "api.x.ai", "api.cohere.com", "api.cohere.ai",
-    "api.perplexity.ai", "bedrock-runtime"]);
-let SanctionedProcs = dynamic([
-    "msedge.exe", "chrome.exe", "firefox.exe", "brave.exe", "msedgewebview2.exe",
-    "claude.exe", "chatgpt.exe", "code.exe", "ms-teams.exe", "teams.exe"]);
-DeviceNetworkEvents
-| where TimeGenerated {TimeRange}
-| where isempty(TargetDevice) or DeviceName has TargetDevice
-| where ActionType == "ConnectionSuccess"
-| where RemoteUrl has_any (LLMDomains) or ipv4_is_in_range(RemoteIP, "160.79.104.0/23")
-| extend IsSanctioned = InitiatingProcessFileName in~ (SanctionedProcs)
-| summarize Calls = count(),
-            Destinations = make_set(coalesce(RemoteUrl, RemoteIP), 5),
-            Devices = make_set(DeviceName, 5),
-            Accounts = make_set(InitiatingProcessAccountName, 5),
-            FirstSeen = min(TimeGenerated),
-            LastSeen = max(TimeGenerated)
-         by Process = InitiatingProcessFileName, IsSanctioned
-| extend Status = iff(IsSanctioned, "✅ Sanctioned", "⚠️ Unsanctioned")
-| sort by IsSanctioned asc, Calls desc
-| project Status, Process, Calls, Destinations, Devices, Accounts, FirstSeen, LastSeen
-```
-
----
-
-## ⚠️ 5. Unsanctioned LLM Activity
+## ⚠️ 3. Unsanctioned LLM Activity
 
 **Visualization:** Grid
 
@@ -239,7 +166,7 @@ DeviceNetworkEvents
 
 ---
 
-## 🤖 6. LLM-Driven Offensive Agent
+## 🤖 4. LLM-Driven Offensive Agent
 
 **Visualization:** Grid
 
@@ -292,7 +219,7 @@ LLMHosts
 
 ---
 
-## 🔎 7. Recon Toolchain Burst
+## 🔎 5. Recon Toolchain Burst
 
 **Visualization:** Grid
 
@@ -327,7 +254,7 @@ DeviceProcessEvents
 
 ---
 
-## 🧩 8. AI Agent Framework Activity
+## 🧩 6. AI Agent Framework Activity
 
 **Visualization:** Grid
 
@@ -363,34 +290,7 @@ DeviceProcessEvents
 
 ---
 
-## 🖥️ 9. Local LLM Runtimes
-
-**Visualization:** Grid
-
-Local models make no external API calls, so they won't appear in panels 2 to 6. This shows where they're running.
-
-```kql
-let TargetDevice = trim(" ", "{DeviceName}");
-let Runtimes = dynamic([
-    "ollama", "ollama.exe", "ollama app.exe", "llama-server", "llama-server.exe",
-    "llama-cli", "lms", "lms.exe", "lm studio.exe", "vllm", "koboldcpp.exe"]);
-DeviceProcessEvents
-| where TimeGenerated {TimeRange}
-| where isempty(TargetDevice) or DeviceName has TargetDevice
-| where FileName in~ (Runtimes)
-| summarize Launches = count(),
-            Accounts = make_set(AccountName, 5),
-            SampleCmds = make_set(ProcessCommandLine, 5),
-            FirstSeen = min(TimeGenerated),
-            LastSeen = max(TimeGenerated)
-         by DeviceName, Runtime = FileName
-| sort by LastSeen desc
-| project FirstSeen, DeviceName, Runtime, Launches, Accounts, SampleCmds, LastSeen
-```
-
----
-
-## 🌐 10. Inbound Scan & Sweep Bursts
+## 🌐 7. Inbound Scan & Sweep Bursts
 
 **Visualization:** Grid
 
@@ -451,7 +351,7 @@ union
 
 ---
 
-## 🔨 11. Machine-Speed Logon Failures
+## 🔨 8. Machine-Speed Logon Failures
 
 **Visualization:** Grid
 
@@ -505,68 +405,7 @@ DeviceLogonEvents
 
 ---
 
-## 🌍 12. Web Request Bursts
-
-**Visualization:** Grid  ·  **Requires:** IIS logs in `W3CIISLog` (Azure Monitor Agent)
-
-Per-source request rate on web servers. Many distinct URLs with a high error rate is content fuzzing. Tool and scripting user agents rank higher.
-
-```kql
-let TargetDevice = trim(" ", "{DeviceName}");
-let BurstWindow = 5m;
-let MinRequests = 300;
-let MinUris = 100;
-let Allowlist = dynamic([]);
-let ToolAgents = dynamic([
-    "python-requests", "python-urllib", "aiohttp", "go-http-client", "curl", "wget",
-    "ffuf", "nuclei", "sqlmap", "gobuster", "katana", "httpx", "wfuzz", "nikto",
-    "feroxbuster", "dirbuster", "zgrab", "masscan", "headlesschrome", "scrapy"]);
-W3CIISLog
-| where TimeGenerated {TimeRange}
-| where isempty(TargetDevice) or Computer has TargetDevice
-| where isnotempty(cIP) and cIP !in (Allowlist)
-| extend Status = tostring(scStatus)
-| extend IsToolUA = csUserAgent has_any (ToolAgents)
-| summarize Requests = count(),
-            Uris = dcount(csUriStem),
-            Errors = countif(Status startswith "4"),
-            ToolUA = max(toint(IsToolUA)),
-            UserAgents = make_set(csUserAgent, 5),
-            SampleUris = make_set(csUriStem, 10),
-            Sites = make_set(Computer, 5)
-         by cIP, Bucket = bin(TimeGenerated, BurstWindow)
-| where Requests >= MinRequests or Uris >= MinUris or ToolUA == 1
-| summarize Bursts = count(),
-            Requests = sum(Requests),
-            MaxUris = max(Uris),
-            Errors = sum(Errors),
-            ToolUA = max(ToolUA),
-            UserAgents = make_set(UserAgents, 5),
-            SampleUris = make_set(SampleUris, 15),
-            Sites = make_set(Sites, 5),
-            FirstSeen = min(Bucket),
-            LastSeen = max(Bucket)
-         by SourceIP = cIP
-| extend ErrorRate = round(todouble(Errors) / Requests, 2)
-| extend Pattern = case(
-    MaxUris >= MinUris and ErrorRate >= 0.5, "📂 Content Fuzzing",
-    ToolUA == 1, "🛠️ Tool User-Agent",
-    MaxUris >= MinUris, "🕷️ Crawling",
-    "⚡ High Volume")
-| extend SevRank = case(
-    MaxUris >= MinUris and ErrorRate >= 0.5 and ToolUA == 1, 1,
-    MaxUris >= MinUris and ErrorRate >= 0.5, 2,
-    ToolUA == 1, 2,
-    3)
-| extend Severity = case(SevRank == 1, "🔴 Critical", SevRank == 2, "🟠 High", "🟡 Medium")
-| sort by SevRank asc, Requests desc
-| project FirstSeen, Severity, Pattern, SourceIP, Requests, MaxUris, Errors, ErrorRate,
-          UserAgents, SampleUris, Sites, Bursts, LastSeen
-```
-
----
-
-## 🛡️ 13. WAF Request Bursts
+## 🛡️ 9. WAF Request Bursts
 
 **Visualization:** Grid  ·  **Requires:** Application Gateway WAF diagnostics sent to the workspace (`AzureDiagnostics`, category `ApplicationGatewayFirewallLog`)
 
@@ -609,7 +448,7 @@ AzureDiagnostics
 
 ---
 
-## ⚡ 14. Machine-Speed Discovery
+## ⚡ 10. Machine-Speed Discovery
 
 **Visualization:** Grid
 
@@ -679,7 +518,7 @@ union
 
 ---
 
-## ☁️ 15. Cloud Sign-In Bursts
+## ☁️ 11. Cloud Sign-In Bursts
 
 **Visualization:** Grid  ·  **Data:** `SigninLogs`, `AADNonInteractiveUserSignInLogs`
 
@@ -750,113 +589,7 @@ Signins
 
 ---
 
-## 🐢 16. Distributed & Low-and-Slow Sign-Ins
-
-**Visualization:** Grid  ·  **Data:** `SigninLogs`, `AADNonInteractiveUserSignInLogs`
-
-Catches agents that stay under the per-IP burst thresholds in panel 15. Three patterns are grouped by something other than a single IP in a short window:
-
-| Pattern | Grouped By | Flags When |
-|---|---|---|
-| 🕸️ Distributed Attack on Account | Target user, per hour | 15+ failures from 10+ IPs |
-| 🐢 Low-and-Slow Spray | Source IP, whole time range | Failures in 6+ separate hours, never more than 10 in an hour, across 10+ users |
-| 🎭 Shared Tool Fingerprint | User agent, per hour | 20+ IPs and 20+ users, with 80%+ of that user agent's sign-ins failing |
-
-`Succeeded` means a success came from one of the attacking IPs, so the row ranks **Critical**.
-
-```kql
-let Allowlist = dynamic([]);   // corporate egress IPs, VPN gateways
-let FailCodes = dynamic(["50126", "50053", "50034", "50055", "50056", "50057", "50064"]);
-let ValidPwCodes = dynamic(["50072", "50074", "50076", "50079", "50158", "53003"]);
-let Signins = union
-    (SigninLogs
-        | where TimeGenerated {TimeRange}
-        | project TimeGenerated, UserPrincipalName, IPAddress, ResultType = tostring(ResultType),
-                  UserAgent, ASN = tostring(AutonomousSystemNumber)),
-    (AADNonInteractiveUserSignInLogs
-        | where TimeGenerated {TimeRange}
-        | project TimeGenerated, UserPrincipalName, IPAddress, ResultType = tostring(ResultType),
-                  UserAgent, ASN = tostring(AutonomousSystemNumber))
-    | extend UserPrincipalName = tolower(UserPrincipalName)
-    | where isnotempty(IPAddress) and IPAddress !in (Allowlist)
-    | extend IsFail = ResultType in (FailCodes) or ResultType in (ValidPwCodes),
-             IsSuccess = ResultType == "0";
-let Distributed = Signins
-    | summarize Failures = countif(IsFail),
-                DistinctIPs = dcountif(IPAddress, IsFail),
-                FailIPs = make_set_if(IPAddress, IsFail, 200),
-                OkIPs = make_set_if(IPAddress, IsSuccess, 50),
-                ASNs = make_set_if(ASN, IsFail, 10),
-                FirstSeen = min(TimeGenerated),
-                LastSeen = max(TimeGenerated)
-             by Key = UserPrincipalName, Bucket = bin(TimeGenerated, 1h)
-    | where DistinctIPs >= 10 and Failures >= 15
-    | extend Succeeded = array_length(set_intersect(FailIPs, OkIPs)) > 0
-    | summarize arg_max(DistinctIPs, *), AnySuccess = max(toint(Succeeded)) by Key
-    | extend Succeeded = AnySuccess == 1,
-             DistinctUsers = tolong(1),
-             SampleIPs = array_slice(FailIPs, 0, 9),
-             SampleUsers = pack_array(Key),
-             Pattern = "🕸️ Distributed Attack on Account",
-             KeyType = "User";
-let LowSlow = Signins
-    | where IsFail or IsSuccess
-    | summarize Failures = countif(IsFail),
-                Successes = countif(IsSuccess),
-                DistinctUsers = dcountif(UserPrincipalName, IsFail),
-                SampleUsers = make_set_if(UserPrincipalName, IsFail, 10),
-                ASNs = make_set(ASN, 5),
-                ActiveHours = dcountif(bin(TimeGenerated, 1h), IsFail),
-                FirstSeen = min(TimeGenerated),
-                LastSeen = max(TimeGenerated)
-             by Key = IPAddress
-    | join kind=inner (
-        Signins
-        | where IsFail
-        | summarize PerHour = count() by Key = IPAddress, bin(TimeGenerated, 1h)
-        | summarize MaxPerHour = max(PerHour) by Key
-      ) on Key
-    | where ActiveHours >= 6 and MaxPerHour <= 10 and DistinctUsers >= 10
-    | extend Succeeded = Successes > 0,
-             DistinctIPs = tolong(1),
-             SampleIPs = pack_array(Key),
-             Pattern = "🐢 Low-and-Slow Spray",
-             KeyType = "IP";
-let SharedUA = Signins
-    | where isnotempty(UserAgent)
-    | summarize Total = count(),
-                Failures = countif(IsFail),
-                DistinctIPs = dcountif(IPAddress, IsFail),
-                DistinctUsers = dcountif(UserPrincipalName, IsFail),
-                FailIPs = make_set_if(IPAddress, IsFail, 200),
-                OkIPs = make_set_if(IPAddress, IsSuccess, 200),
-                SampleUsers = make_set_if(UserPrincipalName, IsFail, 10),
-                ASNs = make_set_if(ASN, IsFail, 10),
-                FirstSeen = min(TimeGenerated),
-                LastSeen = max(TimeGenerated)
-             by Key = UserAgent, Bucket = bin(TimeGenerated, 1h)
-    | where DistinctIPs >= 20 and DistinctUsers >= 20 and todouble(Failures) / Total >= 0.8
-    | extend Succeeded = array_length(set_intersect(FailIPs, OkIPs)) > 0
-    | summarize arg_max(DistinctUsers, *), AnySuccess = max(toint(Succeeded)) by Key
-    | extend Succeeded = AnySuccess == 1,
-             SampleIPs = array_slice(FailIPs, 0, 9),
-             Pattern = "🎭 Shared Tool Fingerprint",
-             KeyType = "User Agent";
-union Distributed, LowSlow, SharedUA
-| extend SevRank = case(
-    Succeeded, 1,
-    Pattern has "Distributed" or Pattern has "Shared", 2,
-    DistinctUsers >= 25, 2,
-    3)
-| extend Severity = case(SevRank == 1, "🔴 Critical", SevRank == 2, "🟠 High", "🟡 Medium")
-| sort by SevRank asc, Failures desc
-| project FirstSeen, Severity, Pattern, KeyType, Key, Succeeded, Failures, DistinctIPs,
-          DistinctUsers, SampleIPs, SampleUsers, ASNs, LastSeen
-```
-
----
-
-## 🔓 17. Sensitive Path Probes
+## 🔓 12. Sensitive Path Probes
 
 **Visualization:** Grid  ·  **Requires:** IIS logs in `W3CIISLog` (Azure Monitor Agent)
 
@@ -910,7 +643,7 @@ W3CIISLog
 
 ---
 
-## 🔗 18. Recon to Sign-In
+## 🔗 13. Recon to Sign-In
 
 **Visualization:** Grid  ·  **Requires:** IIS logs in `W3CIISLog` plus Entra ID sign-in logs
 
@@ -961,7 +694,7 @@ union isfuzzy=true SigninLogs, AADNonInteractiveUserSignInLogs
 
 ---
 
-## 🔌 19. MCP Server Config Changes
+## 🔌 14. MCP Server Config Changes
 
 **Visualization:** Grid
 
@@ -998,7 +731,7 @@ DeviceFileEvents
 
 ---
 
-## 🔑 20. LLM API Key Harvesting
+## 🔑 15. LLM API Key Harvesting
 
 **Visualization:** Grid
 
@@ -1046,7 +779,7 @@ DeviceProcessEvents
 
 ---
 
-## 🐳 21. Offensive Containers
+## 🐳 16. Offensive Containers
 
 **Visualization:** Grid
 
@@ -1090,21 +823,265 @@ DeviceProcessEvents
 
 ---
 
+## 🎯 17. ARTEX Indicator Hits
+
+**Visualization:** Grid
+
+Known ARTEX markers across web, sign-in and endpoint data: user agents that name ARTEX or its forks, probe paths and markers, host artifacts, file hashes, backdoored container images and toolkit domains. Indicators come from the [ThreatDefence ARTEX detections](https://github.com/ThreatDefence/artex-detections) project. Host artifacts, hashes and domains rank Critical, because they mean the activity reached a host.
+
+```kql
+let TargetDevice = trim(" ", "{DeviceName}");
+let UAHigh   = @"(?i)artex|scopeweaver|spa-api-recon";
+let UAMedium = @"(?i)hexstrike|cyberstrikeai|reconprobe/1\.0|norma/0\.4|azure-toolkit/1\.0";
+let WebMarkers = @"(?i)zzz-nonexistent-xyz123|zzz_nonexistent_abc\.txt|notexist-xyz|artex[_-]?probe|artex_write_probe|artx_persist_ok|artex_control_marker_zz9q|%artex_probe_unset%|callback\?code=aaaa&state=notvalidb64|eyjhbgcioijub25lin0\.";
+let HostPaths = @"(?i)artex-probe-|\\programdata\\artx5v\\|zzartx0000\.php|[\\/](cl1217|f1219a|z1219)\.jsp$|graphics-hook-filter64\.dll|graphics-hook_config\.bin";
+let CmdMarkers = @"(?i)artex-probe-|artexprobe|\\programdata\\artx5v|art18-|artex_write_probe|artx_persist_ok|artex_control_marker_zz9q|tomicdd/artex|congdonglinux/artex|microsoftedgeupdatetaskmachine(ua|core)\{(cec15d9b|4c33ce3f)|microsoft_updates";
+let Hashes = dynamic([
+    "49fe70419fd19b81ca8d730a6ef7c1ec71b681d60b390761070d42686c7d2068",
+    "3fb5a9fb3e2cb1d6208966bd4e55d10282d19c7250d827efa560463d60a12ee4",
+    "364251838edfcf5ef1107fa692da3c5bd9a540482449f645992830134bf807ab",
+    "3f64b0146b323c5716043360e84384a5a197a897f46088df93a910470a29e1a0",
+    "2a23e10bfc097e98295cbff8124bd403c4cb677e709b48ccc53d6aca216c3061",
+    "da4128aa5d006e05c58f0d240c2d8e5fb02774b6acf314f1230059c7a3498724",
+    "d5070f52262effe216b840711343bff8f2787f39208d887d8dfd9c673f8d1573"]);
+let Domains = dynamic(["nginxmysql.com", "sqlserver-sqlite.com", "ddduuuppp.com",
+    "vietnam852.com", "zhzy999.net", "jiancai008.com"]);
+union isfuzzy=true
+    (W3CIISLog
+        | where TimeGenerated {TimeRange}
+        | where isempty(TargetDevice) or Computer has TargetDevice
+        | extend Request = strcat(csUriStem, "?", csUriQuery)
+        | where csUserAgent matches regex UAHigh or csUserAgent matches regex UAMedium or Request matches regex WebMarkers
+        | project TimeGenerated, Source = "🌐 IIS", Entity = cIP, Host = Computer,
+                  Indicator = iff(Request matches regex WebMarkers, "Web probe marker", "User agent"),
+                  Detail = iff(Request matches regex WebMarkers, Request, csUserAgent), Rank = iff(csUserAgent matches regex UAMedium and not(Request matches regex WebMarkers), 3, 2)),
+    (AzureDiagnostics
+        | where TimeGenerated {TimeRange}
+        | where Category == "ApplicationGatewayAccessLog"
+        | where userAgent_s matches regex UAHigh or userAgent_s matches regex UAMedium or requestUri_s matches regex WebMarkers
+        | project TimeGenerated, Source = "🛡️ App Gateway", Entity = clientIP_s, Host = host_s,
+                  Indicator = iff(requestUri_s matches regex WebMarkers, "Web probe marker", "User agent"),
+                  Detail = iff(requestUri_s matches regex WebMarkers, requestUri_s, userAgent_s), Rank = 2),
+    (union isfuzzy=true SigninLogs, AADNonInteractiveUserSignInLogs
+        | where TimeGenerated {TimeRange}
+        | where UserAgent matches regex UAHigh or UserAgent matches regex UAMedium
+        | project TimeGenerated, Source = "🔐 Entra Sign-in", Entity = IPAddress, Host = UserPrincipalName,
+                  Indicator = "User agent", Detail = UserAgent, Rank = 2),
+    (DeviceFileEvents
+        | where TimeGenerated {TimeRange}
+        | where isempty(TargetDevice) or DeviceName has TargetDevice
+        | where FolderPath matches regex HostPaths or SHA256 in (Hashes)
+        | project TimeGenerated, Source = "💻 File", Entity = InitiatingProcessAccountName, Host = DeviceName,
+                  Indicator = iff(SHA256 in (Hashes), "File hash", "Host artifact"), Detail = FolderPath, Rank = 1),
+    (DeviceProcessEvents
+        | where TimeGenerated {TimeRange}
+        | where isempty(TargetDevice) or DeviceName has TargetDevice
+        | where ProcessCommandLine matches regex CmdMarkers or SHA256 in (Hashes) or FolderPath endswith "/app/artex"
+        | project TimeGenerated, Source = "⚙️ Process", Entity = AccountName, Host = DeviceName,
+                  Indicator = iff(SHA256 in (Hashes), "File hash", "Command marker"), Detail = ProcessCommandLine, Rank = 1),
+    (DeviceNetworkEvents
+        | where TimeGenerated {TimeRange}
+        | where isempty(TargetDevice) or DeviceName has TargetDevice
+        | where RemoteUrl has_any (Domains)
+        | project TimeGenerated, Source = "📡 Network", Entity = RemoteIP, Host = DeviceName,
+                  Indicator = "Toolkit / C2 domain", Detail = strcat(RemoteUrl, " <- ", InitiatingProcessFileName), Rank = 1)
+| extend Severity = case(Rank == 1, "🔴 Critical", Rank == 2, "🟠 High", "🟡 Medium")
+| summarize Hits = count(), FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated),
+            Samples = make_set(Detail, 5)
+         by Severity, Rank, Source, Indicator, Entity, Host
+| sort by Rank asc, LastSeen desc
+| project FirstSeen, Severity, Source, Indicator, Entity, Host, Hits, Samples, LastSeen
+```
+
+---
+
+## 🐚 18. Web & Database Services Spawning Shells
+
+**Visualization:** Grid
+
+A web server (IIS, Apache, nginx, PHP, Tomcat) or database (SQL Server, MySQL, PostgreSQL) starting a shell, script host or download and recon tool. That's the moment an attack on an application becomes code running on the server: a web shell, an injection, or `xp_cmdshell`. ARTEX operators brute-force SQL Servers and run payloads this way.
+
+```kql
+let TargetDevice = trim(" ", "{DeviceName}");
+let WebParents = dynamic(["w3wp.exe", "iisexpress.exe", "httpd.exe", "httpd", "apache2", "nginx.exe", "nginx",
+    "php-cgi.exe", "php-fpm", "tomcat.exe", "tomcat9.exe", "java.exe", "java"]);
+let DbParents = dynamic(["sqlservr.exe", "mysqld.exe", "mysqld", "postgres.exe", "postgres", "oracle.exe", "mongod.exe", "mongod"]);
+let Shells = dynamic(["cmd.exe", "powershell.exe", "pwsh.exe", "pwsh", "wscript.exe", "cscript.exe", "mshta.exe",
+    "bash", "sh", "dash", "zsh"]);
+let Tools = dynamic(["certutil.exe", "bitsadmin.exe", "curl.exe", "curl", "wget", "whoami.exe", "whoami", "net.exe", "net1.exe",
+    "nltest.exe", "systeminfo.exe", "tasklist.exe", "schtasks.exe", "rundll32.exe", "regsvr32.exe",
+    "nc", "ncat", "netcat", "python", "python3", "perl"]);
+let ExcludedCmds = dynamic([]);   // known-good command fragments, e.g. a monitoring script
+DeviceProcessEvents
+| where TimeGenerated {TimeRange}
+| where isempty(TargetDevice) or DeviceName has TargetDevice
+| where InitiatingProcessFileName in~ (WebParents) or InitiatingProcessFileName in~ (DbParents)
+| where FileName in~ (Shells) or FileName in~ (Tools)
+| where not(ProcessCommandLine has_any (ExcludedCmds))
+| extend Service = iff(InitiatingProcessFileName in~ (DbParents), "🗄️ Database", "🌐 Web")
+| extend Child = iff(FileName in~ (Tools), "🧰 Download / Recon Tool", "🐚 Shell")
+| extend SevRank = case(Service has "Database", 1, Child has "Tool", 1, InitiatingProcessFileName in~ ("java.exe", "java"), 3, 2)
+| extend Severity = case(SevRank == 1, "🔴 Critical", SevRank == 2, "🟠 High", "🟡 Medium")
+| sort by SevRank asc, TimeGenerated desc
+| project TimeGenerated, Severity, Service, Child, DeviceName, InitiatingProcessFileName, FileName,
+          ProcessCommandLine, AccountName, InitiatingProcessCommandLine
+```
+
+---
+
+## 🪪 19. App & Service Principal Abuse
+
+**Visualization:** Grid
+
+Apps and service principals abusing their own access in Entra ID: assigning themselves roles, adding their own credentials, or having their client secret guessed until it works. Attackers who take over an app get access that MFA and Conditional Access for users don't touch.
+
+```kql
+let MinSecretFailures = 5;
+let RoleOps = dynamic(["Add app role assignment to service principal", "Add member to role", "Add eligible member to role"]);
+let SecretFailCodes = dynamic(["7000215", "7000222"]);   // invalid / expired client secret
+union isfuzzy=true
+    (AuditLogs
+        | where TimeGenerated {TimeRange}
+        | where OperationName in (RoleOps)
+            or OperationName has "Certificates and secrets management"
+            or OperationName == "Add service principal credentials"
+        | extend InitiatorSpId = tostring(InitiatedBy.app.servicePrincipalId),
+                 InitiatorApp = tostring(InitiatedBy.app.displayName),
+                 InitiatorUser = tostring(InitiatedBy.user.userPrincipalName),
+                 TargetName = tostring(TargetResources[0].displayName)
+        | extend ByApp = isnotempty(InitiatorSpId)
+        | extend Self = ByApp and (tostring(TargetResources) has InitiatorSpId or TargetName == InitiatorApp)
+        | extend IsRole = OperationName in (RoleOps)
+        | extend Pattern = case(
+            IsRole and Self, "👑 App Assigned Itself a Role",
+            not(IsRole) and Self, "🔑 App Added Its Own Credential",
+            IsRole and ByApp, "🧩 App Granted a Role",
+            ByApp, "🔑 App Added a Credential",
+            "👤 User Added an App Credential")
+        | extend SevRank = case(Pattern has "Itself", 1, Pattern has "Its Own", 2, ByApp, 3, 4)
+        | project TimeGenerated, SevRank, Pattern, ServicePrincipal = coalesce(InitiatorApp, TargetName),
+                  Actor = coalesce(InitiatorApp, InitiatorUser), Target = TargetName, IPAddress = "",
+                  Detail = OperationName, Count = 1),
+    (AADServicePrincipalSignInLogs
+        | where TimeGenerated {TimeRange}
+        | summarize Failures = countif(ResultType in (SecretFailCodes)),
+                    Successes = countif(ResultType == "0"),
+                    FirstFailure = minif(TimeGenerated, ResultType in (SecretFailCodes)),
+                    LastSuccess = maxif(TimeGenerated, ResultType == "0"),
+                    Resources = make_set(ResourceDisplayName, 10)
+                 by ServicePrincipalName, ServicePrincipalId, IPAddress
+        | where Failures >= MinSecretFailures
+        | extend Cracked = Successes > 0 and LastSuccess > FirstFailure
+        | extend Pattern = iff(Cracked, "🔓 Secret Guessing Then Success", "🎲 Secret Guessing")
+        | project TimeGenerated = FirstFailure, SevRank = iff(Cracked, 1, 3), Pattern,
+                  ServicePrincipal = ServicePrincipalName, Actor = IPAddress, Target = strcat_array(Resources, ", "),
+                  IPAddress, Detail = strcat(Failures, " bad secrets, ", Successes, " successes"), Count = Failures)
+| extend Severity = case(SevRank == 1, "🔴 Critical", SevRank == 2, "🟠 High", SevRank == 3, "🟡 Medium", "🔵 Low")
+| sort by SevRank asc, TimeGenerated desc
+| project TimeGenerated, Severity, Pattern, ServicePrincipal, Actor, Target, IPAddress, Detail, Count
+```
+
+---
+
+## ⏱️ 20. Fixed-Rhythm Password Spray
+
+**Visualization:** Grid
+
+Password sprays sent at a steady machine rhythm, such as one attempt every second. Humans and most retry logic are irregular; a script or agent is not. The `Rhythm` score is the spread of gaps between attempts divided by the average gap: the closer to 0, the more machine-like. Complements panel 11, which looks at volume.
+
+```kql
+let MinAttempts = 20;
+let MinUsers = 5;
+let Allowlist = dynamic([]);   // corporate egress IPs
+let FailCodes = dynamic(["50126", "50053", "50055", "50057"]);
+SigninLogs
+| where TimeGenerated {TimeRange}
+| where ResultType in (FailCodes)
+| where isnotempty(IPAddress) and IPAddress !in (Allowlist)
+| extend Window = bin(TimeGenerated, 1h)
+| project TimeGenerated, Window, IPAddress, UserPrincipalName, UserAgent, AppDisplayName
+| sort by IPAddress asc, Window asc, TimeGenerated asc
+| extend GapSec = iff(prev(IPAddress) == IPAddress and prev(Window) == Window,
+                      datetime_diff("millisecond", TimeGenerated, prev(TimeGenerated)) / 1000.0, real(null))
+| summarize Attempts = count(), Users = dcount(UserPrincipalName),
+            AvgGapSec = round(avg(GapSec), 2), GapStdev = round(stdev(GapSec), 2),
+            SampleUsers = make_set(UserPrincipalName, 15), UserAgents = make_set(UserAgent, 5),
+            Apps = make_set(AppDisplayName, 5), FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated)
+         by IPAddress, Window
+| where Attempts >= MinAttempts and Users >= MinUsers
+| extend Rhythm = iff(AvgGapSec > 0, round(GapStdev / AvgGapSec, 2), real(null))
+| extend Pattern = case(Rhythm <= 0.2, "⏱️ Machine Rhythm", Rhythm <= 0.5, "🔁 Scripted", "👤 Irregular")
+| extend SevRank = case(Pattern has "Machine", 2, Pattern has "Scripted", 3, 4)
+| extend Severity = case(SevRank == 2, "🟠 High", SevRank == 3, "🟡 Medium", "🔵 Low")
+| sort by SevRank asc, Attempts desc
+| project FirstSeen, Severity, Pattern, IPAddress, Attempts, Users, AvgGapSec, Rhythm,
+          SampleUsers, UserAgents, Apps, LastSeen
+```
+
+---
+
+## 📞 21. Callbacks to Webhook, OAST & Tunnel Services
+
+**Visualization:** Grid
+
+Hosts reaching out-of-band testing services (webhook bins, interactsh and Burp Collaborator, DNS logging sites) or tunnel services (ngrok, Cloudflare quick tunnels). Agents use callbacks to confirm an exploit worked, and tunnels to expose a console or C2. On a server, either is a strong signal; on a workstation it's often a developer.
+
+```kql
+let TargetDevice = trim(" ", "{DeviceName}");
+let Oast = dynamic(["interact.sh", "oast.fun", "oast.live", "oast.me", "oast.online", "oast.pro", "oast.site",
+    "oastify.com", "burpcollaborator.net", "dnslog.cn", "ceye.io"]);
+let Webhooks = dynamic(["webhook.site", "requestbin.net", "pipedream.net"]);
+let Tunnels = dynamic(["ngrok.io", "ngrok-free.app", "ngrok.app", "trycloudflare.com", "serveo.net",
+    "localhost.run", "loca.lt", "bore.pub"]);
+let Servers = DeviceInfo
+    | where TimeGenerated > ago(7d)
+    | summarize arg_max(TimeGenerated, DeviceType, OSPlatform) by DeviceId
+    | where DeviceType == "Server" or OSPlatform startswith "WindowsServer"
+    | distinct DeviceId;
+union isfuzzy=true
+    (DeviceNetworkEvents
+        | where TimeGenerated {TimeRange}
+        | where isempty(TargetDevice) or DeviceName has TargetDevice
+        | where RemoteUrl has_any (Oast) or RemoteUrl has_any (Webhooks) or RemoteUrl has_any (Tunnels)
+        | extend Category = case(RemoteUrl has_any (Oast), "🛰️ OAST / DNS Log",
+                                 RemoteUrl has_any (Tunnels), "🚇 Tunnel", "🪝 Webhook Bin")
+        | project TimeGenerated, DeviceId, DeviceName, Category, Destination = RemoteUrl,
+                  Process = InitiatingProcessFileName, CommandLine = InitiatingProcessCommandLine,
+                  Account = InitiatingProcessAccountName),
+    (DeviceProcessEvents
+        | where TimeGenerated {TimeRange}
+        | where isempty(TargetDevice) or DeviceName has TargetDevice
+        | where (FileName in~ ("ngrok", "ngrok.exe"))
+            or (FileName in~ ("cloudflared", "cloudflared.exe") and ProcessCommandLine has "tunnel")
+        | project TimeGenerated, DeviceId, DeviceName, Category = "🚇 Tunnel", Destination = "(tunnel client)",
+                  Process = FileName, CommandLine = ProcessCommandLine, Account = AccountName)
+| extend IsServer = DeviceId in (Servers)
+| summarize Events = count(), FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated),
+            Destinations = make_set(Destination, 10), CommandLines = make_set(CommandLine, 3)
+         by DeviceName, IsServer, Category, Process, Account
+| extend SevRank = case(IsServer, 2, Category has "Tunnel", 3, 4)
+| extend Severity = case(SevRank == 2, "🟠 High", SevRank == 3, "🟡 Medium", "🔵 Low")
+| sort by SevRank asc, LastSeen desc
+| project FirstSeen, Severity, Category, DeviceName, IsServer, Process, Account, Events, Destinations, CommandLines, LastSeen
+```
+
+---
+
 ## 🔧 Enabling Web & WAF Logs
 
-Panels 12, 13, 17 and 18 and the Sensitive Files Served tile stay empty until these logs reach the workspace.
+Panels 9, 12, 13 and 17 and the Sensitive Files Served tile stay empty until these logs reach the workspace.
 
-**🌐 IIS logs (panels 12, 17 and 18)**
+**🌐 IIS logs (panels 12, 13 and 17)**
 1. Make sure the web server VM has the Azure Monitor Agent.
 2. In Azure Monitor, create a **Data Collection Rule**, add the VM as a resource, and add an **IIS Logs** data source.
 3. Send it to your Sentinel workspace. Logs appear in `W3CIISLog` within about 15 minutes.
 4. To test in the lab, install IIS on windows-vm: `Install-WindowsFeature Web-Server -IncludeManagementTools` on Windows Server, or `Enable-WindowsOptionalFeature -Online -FeatureName IIS-WebServerRole` on Windows client.
 
-**🛡️ Application Gateway WAF logs (panel 13)**
+**🛡️ Application Gateway WAF logs (panel 9)**
 1. You need an Application Gateway on the **WAF_v2** tier with a WAF policy in **Detection** or **Prevention** mode.
 2. On the gateway, open **Diagnostic settings** and select **Add diagnostic setting**.
 3. Check **ApplicationGatewayFirewallLog** and send it to your Sentinel workspace.
-4. With **Azure diagnostics** as the destination table, logs land in `AzureDiagnostics`, which matches panel 13. If you choose **Resource specific**, they land in `AGWFirewallLogs` and panel 13 needs updating.
+4. With **Azure diagnostics** as the destination table, logs land in `AzureDiagnostics`, which matches panel 9. If you choose **Resource specific**, they land in `AGWFirewallLogs` and panel 9 needs updating.
 
 ---
 
@@ -1112,19 +1089,24 @@ Panels 12, 13, 17 and 18 and the Sensitive Files Served tile stay empty until th
 
 - **Sanctioned processes:** Edit `SanctionedProcs` to match the AI apps your organization approves. Anything not on the list appears as unsanctioned.
 - **RemoteUrl coverage:** Defender doesn't always populate `RemoteUrl`, especially on Linux. Turning on network protection improves URL coverage on Windows. Anthropic is also matched by its API IP range (`160.79.104.0/23`); other providers rely on the URL.
-- **Pentest hosts:** Approved pentest or red team devices will appear in panels 6 to 8. Exclude them by hostname or device tag.
-- **Developers:** Panel 8 at Low severity is visibility, not an alert. Developers installing `openai` or `langchain` is normal.
-- **Discovery noise:** Login scripts, inventory tools and admin automation can run discovery commands quickly. Add their parent process to `ExcludedParents` in panel 14 rather than raising `MinDistinct`, so real agent bursts still fire.
-- **Corporate IPs:** Add corporate egress IPs and VPN gateways to `Allowlist` in panels 15 and 16. Real users' typos and successful sign-ins from a shared IP would otherwise look like a spray that succeeded.
-- **Detection rules:** Panels 6, 7 and 10 to 18 aggregate, so they work as scheduled Sentinel analytic rules rather than Defender custom detections. Panels 19 to 21 return one row per event, so they also work as Defender custom detections.
-- **Burst thresholds:** Each of panels 10 to 13 has its thresholds in `let` statements at the top (`MinPorts`, `MinFailures`, `MinRequests` and so on). Start with the defaults, then raise them if normal traffic shows up.
-- **Allowlists:** Add vulnerability scanners, monitoring tools, load balancers and health probes to `Allowlist` in panels 10 to 13, or they'll show as bursts.
-- **Blocked inbound connections:** Panel 10 uses `FirewallInboundConnectionBlocked`, which needs Windows Firewall auditing for dropped packets turned on. Without it, the panel only sees accepted connections.
-- **Data sources:** Panels 10 and 11 work with Defender data alone. Panels 12 and 13 stay empty unless you collect IIS or Application Gateway WAF logs. If your WAF uses resource-specific tables, switch panel 13 to `AGWFirewallLogs`.
-- **Sensitive path list:** Edit `SensitivePaths` in the overview tiles and panels 17 and 18 to match your stack. Remove paths your apps serve on purpose (for example a real `/backup` route or `/actuator/health`), or they'll show as Served.
-- **Internet scanner noise:** Any public site gets constant probes for `/.env` and `/.git/`. Low and Medium rows in panel 17 are background noise; focus on Served, Machine-Speed Sweep and anything that also appears in panel 18.
+- **Pentest hosts:** Approved pentest or red team devices will appear in panels 4 to 6. Exclude them by hostname or device tag.
+- **Developers:** Panel 6 at Low severity is visibility, not an alert. Developers installing `openai` or `langchain` is normal.
+- **Discovery noise:** Login scripts, inventory tools and admin automation can run discovery commands quickly. Add their parent process to `ExcludedParents` in panel 10 rather than raising `MinDistinct`, so real agent bursts still fire.
+- **Corporate IPs:** Add corporate egress IPs and VPN gateways to `Allowlist` in panel 11. Real users' typos and successful sign-ins from a shared IP would otherwise look like a spray that succeeded.
+- **Detection rules:** Panels 4, 5 and 7 to 13 aggregate, so they work as scheduled Sentinel analytic rules. Panels 14 to 16 and 18 return one row per event, so they also work as Defender custom detections. Matching rules for panels 4, 12 to 19 and 21 are in the AI Agent & ARTEX Detection Rules README.
+- **Burst thresholds:** Each of panels 7 to 9 has its thresholds in `let` statements at the top (`MinPorts`, `MinFailures`, `MinRequests` and so on). Start with the defaults, then raise them if normal traffic shows up.
+- **Allowlists:** Add vulnerability scanners, monitoring tools, load balancers and health probes to `Allowlist` in panels 7 to 9, or they'll show as bursts.
+- **Blocked inbound connections:** Panel 7 uses `FirewallInboundConnectionBlocked`, which needs Windows Firewall auditing for dropped packets turned on. Without it, the panel only sees accepted connections.
+- **Data sources:** Panels 7 and 8 work with Defender data alone. Panel 9 stays empty unless you collect Application Gateway WAF logs. If your WAF uses resource-specific tables, switch panel 9 to `AGWFirewallLogs`.
+- **Sensitive path list:** Edit `SensitivePaths` in the overview tiles and panels 12 and 13 to match your stack. Remove paths your apps serve on purpose (for example a real `/backup` route or `/actuator/health`), or they'll show as Served.
+- **Internet scanner noise:** Any public site gets constant probes for `/.env` and `/.git/`. Low and Medium rows in panel 12 are background noise; focus on Served, Machine-Speed Sweep and anything that also appears in panel 13.
 - **Web servers behind a proxy:** If IIS sits behind Application Gateway or a load balancer, `cIP` is the proxy's address, not the client's. Log the `X-Forwarded-For` header as a custom IIS field and use it instead, or panel 18 won't match sign-in IPs.
-- **Honeytoken decoy:** Serve a fake `/.env` containing honeytoken credentials. A probe in panel 17 followed by a honeytoken sign-in in panel 18 is a confirmed attacker, and it triggers the Honeytoken Isolation playbook.
+- **Honeytoken decoy:** Serve a fake `/.env` containing honeytoken credentials. A probe in panel 12 followed by a honeytoken sign-in in panel 13 is a confirmed attacker, and it triggers the Honeytoken Isolation playbook.
 - **MCP configs:** AI apps rewrite their own config when users add servers through the app, so those rows rank Low. A config written by a shell or script is the one to investigate. Open the file and check every server's `command` and `args`.
-- **Key harvesting:** Developers set API keys in environment variables all the time, so panel 20 only matches key names when a search tool runs, not when a key is exported. Add approved secret-scanning pipelines to `ExcludedAccounts`.
+- **Key harvesting:** Developers set API keys in environment variables all the time, so panel 15 only matches key names when a search tool runs, not when a key is exported. Add approved secret-scanning pipelines to `ExcludedAccounts`.
 - **Offensive containers:** Pentest and red team hosts will show here. Exclude them by hostname or device tag. The image lists are regex patterns, so add new tool names as they appear.
+- **ARTEX indicators:** Panel 17 uses indicators from the [ThreatDefence ARTEX detections](https://github.com/ThreatDefence/artex-detections) project. They change as ARTEX and its forks change, so refresh the lists from that project now and then. Medium-confidence user agents (norma, HexStrike) are shared with other agent tools and rank Medium.
+- **Web and database shells:** Java apps such as Jenkins start shells as part of normal work, so Java parents rank Medium. Add known-good command fragments to `ExcludedCmds`.
+- **App abuse:** Panel 19 needs Entra audit logs and service principal sign-in logs in the workspace. Users adding app credentials rank Low; they're normal admin work, but useful context during an investigation.
+- **Password rhythm:** Panel 20 scores each IP per hour. A low `Rhythm` with many users is a script; a high one is usually users mistyping passwords behind a shared NAT.
+- **Callbacks:** Panel 21 marks servers using `DeviceInfo`. On Linux without network protection, `RemoteUrl` is often empty, so only the tunnel-process half catches Linux hosts.
