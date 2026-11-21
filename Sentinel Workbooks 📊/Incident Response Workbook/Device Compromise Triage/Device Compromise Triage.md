@@ -1149,12 +1149,12 @@ union isfuzzy=true
                         "mshta.exe", "wscript.exe", "cscript.exe")
                  or InitiatingProcessFileName startswith "python"),
             "👂 New Listener",
-        ActionType in ("ConnectionSuccess", "ConnectionAttempt") and RemoteIPType == "Public"
+        ActionType in ("ConnectionSuccess", "ConnectionAttempt", "ConnectionRequest") and RemoteIPType == "Public"
             and (RemotePort in (4444, 1337, 31337, 6667, 9001, 9030, 9050, 9051, 9150, 3333, 5555,
                                 14444, 45700)
                  or RemoteUrl endswith ".onion"),
             "🌐 Suspicious Port Egress",
-        ActionType in ("ConnectionSuccess", "ConnectionAttempt") and RemoteIPType == "Public"
+        ActionType in ("ConnectionSuccess", "ConnectionAttempt", "ConnectionRequest") and RemoteIPType == "Public"
             and RemoteIP !in ("168.63.129.16", "169.254.169.254")
             and (TempPath
                  or InitiatingProcessFileName in~ ("bash", "sh", "dash", "zsh", "nc", "ncat", "netcat",
@@ -1184,7 +1184,7 @@ union isfuzzy=true
     DeviceNetworkEvents
     | where TimeGenerated {TimeRange}
     | where isempty(TargetDevice) or DeviceName has TargetDevice
-    | where ActionType in ("ConnectionSuccess", "ConnectionFailed", "ConnectionAttempt")
+    | where ActionType in ("ConnectionSuccess", "ConnectionFailed", "ConnectionAttempt", "ConnectionRequest")
     | where RemoteIPType in ("Private", "Loopback")
     | where InitiatingProcessFileName !in~ (TrustedProcs)
     | summarize Hosts = dcount(RemoteIP), Ports = dcount(RemotePort), Conns = count(),

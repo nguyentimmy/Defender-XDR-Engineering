@@ -2,7 +2,7 @@
 
 The main signature of an autonomous attack tool like ARTEX running on one of your hosts: a non-browser process calls an LLM API, and the same host runs offensive tooling.
 
-> 📌 Part of the **AI & Autonomous Threats** detection set. Built from workbook panel 6 (LLM-Driven Offensive Agent). This is a Microsoft Sentinel scheduled analytic rule.
+> 📌 Part of the **AI & Autonomous Threats** detection set. Built from workbook panel 4 (LLM-Driven Offensive Agent). This is a Microsoft Sentinel scheduled analytic rule.
 
 | | |
 |---|---|
@@ -31,7 +31,7 @@ let Tools = dynamic([
 let ExcludedDevices = dynamic([]);   // approved pentest / red team hosts
 let LLMHosts = DeviceNetworkEvents
     | where TimeGenerated > ago(Window)
-    | where ActionType == "ConnectionSuccess"
+    | where ActionType in ("ConnectionSuccess", "ConnectionRequest")   // Linux logs outbound as ConnectionRequest
     | where RemoteUrl has_any (LLMDomains) or ipv4_is_in_range(RemoteIP, "160.79.104.0/23")
     | where InitiatingProcessFileName !in~ (SanctionedProcs)
     | summarize LLMCalls = count(),

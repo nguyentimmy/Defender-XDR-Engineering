@@ -57,7 +57,7 @@ let Tools = dynamic([
 let LLM = DeviceNetworkEvents
     | where TimeGenerated {TimeRange}
     | where isempty(TargetDevice) or DeviceName has TargetDevice
-    | where ActionType == "ConnectionSuccess"
+    | where ActionType in ("ConnectionSuccess", "ConnectionRequest")   // Linux logs outbound as ConnectionRequest
     | where RemoteUrl has_any (LLMDomains) or ipv4_is_in_range(RemoteIP, "160.79.104.0/23")
     | extend IsSanctioned = InitiatingProcessFileName in~ (SanctionedProcs);
 let ToolRuns = DeviceProcessEvents
@@ -101,7 +101,7 @@ let LLMDomains = dynamic([
 DeviceNetworkEvents
 | where TimeGenerated {TimeRange}
 | where isempty(TargetDevice) or DeviceName has TargetDevice
-| where ActionType == "ConnectionSuccess"
+| where ActionType in ("ConnectionSuccess", "ConnectionRequest")   // Linux logs outbound as ConnectionRequest
 | where RemoteUrl has_any (LLMDomains) or ipv4_is_in_range(RemoteIP, "160.79.104.0/23")
 | extend Provider = case(
     RemoteUrl has "anthropic" or ipv4_is_in_range(RemoteIP, "160.79.104.0/23"), "Anthropic",
@@ -147,7 +147,7 @@ let ScriptRuntimes = dynamic([
 DeviceNetworkEvents
 | where TimeGenerated {TimeRange}
 | where isempty(TargetDevice) or DeviceName has TargetDevice
-| where ActionType == "ConnectionSuccess"
+| where ActionType in ("ConnectionSuccess", "ConnectionRequest")   // Linux logs outbound as ConnectionRequest
 | where RemoteUrl has_any (LLMDomains) or ipv4_is_in_range(RemoteIP, "160.79.104.0/23")
 | where InitiatingProcessFileName !in~ (SanctionedProcs)
 | summarize Calls = count(),
@@ -189,7 +189,7 @@ let Tools = dynamic([
 let LLMHosts = DeviceNetworkEvents
     | where TimeGenerated {TimeRange}
     | where isempty(TargetDevice) or DeviceName has TargetDevice
-    | where ActionType == "ConnectionSuccess"
+    | where ActionType in ("ConnectionSuccess", "ConnectionRequest")   // Linux logs outbound as ConnectionRequest
     | where RemoteUrl has_any (LLMDomains) or ipv4_is_in_range(RemoteIP, "160.79.104.0/23")
     | where InitiatingProcessFileName !in~ (SanctionedProcs)
     | summarize LLMCalls = count(),
@@ -797,7 +797,7 @@ let LLMDomains = dynamic([
 let SanctionedProcs = dynamic(["msedge.exe", "chrome.exe", "firefox.exe", "claude.exe", "chatgpt.exe", "code.exe"]);
 let LLMHosts = DeviceNetworkEvents
     | where TimeGenerated {TimeRange}
-    | where ActionType == "ConnectionSuccess"
+    | where ActionType in ("ConnectionSuccess", "ConnectionRequest")   // Linux logs outbound as ConnectionRequest
     | where RemoteUrl has_any (LLMDomains) or ipv4_is_in_range(RemoteIP, "160.79.104.0/23")
     | where InitiatingProcessFileName !in~ (SanctionedProcs)
     | distinct DeviceId;
