@@ -2,7 +2,7 @@
 
 An IP that requested sensitive web paths in the last 24 hours, then signed in (or tried to) to Entra ID. This is the harvest-then-log-in chain: an agent finds credentials in an exposed file and uses them.
 
-> 📌 Part of the **AI & Autonomous Threats** detection set. Built from workbook panel 18 (Recon to Sign-In). This is a Microsoft Sentinel scheduled analytic rule.
+> 📌 Part of the **AI & Autonomous Threats** detection set. Built from workbook panel 13 (Recon to Sign-In). This is a Microsoft Sentinel scheduled analytic rule.
 
 | | |
 |---|---|

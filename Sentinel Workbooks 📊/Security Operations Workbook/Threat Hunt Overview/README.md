@@ -33,11 +33,12 @@ Covers both places an AI attack can show up: agents running **on your devices**,
 
 | Section | Panels |
 |---|---|
-| 🧠 **LLM Usage** | Overview Tiles, LLM API Calls Over Time, LLM Calls by Provider, Top LLM API Callers, Unsanctioned LLM Activity |
-| 🕵️ **On-Device Agents** | LLM-Driven Offensive Agent, Recon Toolchain Burst, AI Agent Framework Activity, Local LLM Runtimes |
-| 🌐 **Inbound Machine-Speed Activity** | Inbound Scan & Sweep Bursts, Machine-Speed Logon Failures, Web Request Bursts, WAF Request Bursts |
-| ☁️ **Cloud Identity** | Cloud Sign-In Bursts, Distributed & Low-and-Slow Sign-Ins |
-| ⚡ **Post-Foothold** | Machine-Speed Discovery |
+| 🧠 **LLM Usage** | Overview Tiles, LLM API Calls Over Time, Unsanctioned LLM Activity |
+| 🕵️ **On-Device Agents** | LLM-Driven Offensive Agent, Recon Toolchain Burst, AI Agent Framework Activity, MCP Server Config Changes, LLM API Key Harvesting, Offensive Containers |
+| 🌐 **Inbound Machine-Speed Activity** | Inbound Scan & Sweep Bursts, Machine-Speed Logon Failures, WAF Request Bursts, Sensitive Path Probes |
+| ☁️ **Cloud Identity** | Cloud Sign-In Bursts, Recon to Sign-In, Fixed-Rhythm Password Spray, App & Service Principal Abuse |
+| ⚡ **Post-Foothold** | Machine-Speed Discovery, Web & Database Services Spawning Shells, Callbacks to Webhook, OAST & Tunnel Services |
+| 🎯 **ARTEX** | ARTEX Indicator Hits |
 
 ---
 

@@ -43,7 +43,7 @@ let Tools = dynamic([
 let ExcludedDevices = dynamic([]);   // approved pentest / red team hosts
 let LLMHosts = DeviceNetworkEvents
     | where TimeGenerated > ago(Window)
-    | where ActionType == "ConnectionSuccess"
+    | where ActionType in ("ConnectionSuccess", "ConnectionRequest")   // Linux logs outbound as ConnectionRequest
     | where RemoteUrl has_any (LLMDomains) or ipv4_is_in_range(RemoteIP, "160.79.104.0/23")
     | where InitiatingProcessFileName !in~ (SanctionedProcs)
     | summarize LLMCalls = count(),
@@ -198,7 +198,7 @@ W3CIISLog
 | 🗂️ Alert grouping | Group into one incident when **Host** matches, within 24 hours |
 
 **🛠️ Tuning**
-- The path list is narrower than panel 17 on purpose. It leaves out paths that are often legitimate (`/backup` routes, `/actuator/health`, generic `config.json`).
+- The path list is narrower than panel 12 on purpose. It leaves out paths that are often legitimate (`/backup` routes, `/actuator/health`, generic `config.json`).
 - If an app serves one of these paths on purpose, fix it rather than excluding it. Configs and keys shouldn't be in a web root.
 
 **📋 Response:** confirm the file contents, rotate every credential in it, remove the file from the web root, and check Recon to Sign-In for the same source IP.
@@ -207,7 +207,7 @@ W3CIISLog
 
 ## 4. 🎯 ARTEX Indicator Hit
 
-Any high-confidence ARTEX marker in web, sign-in or endpoint data. Each of these names ARTEX or is unique to its operators, so one hit is enough to alert. Generic agent user agents (norma, HexStrike) are left out of the rule and shown in panel 22 instead.
+Any high-confidence ARTEX marker in web, sign-in or endpoint data. Each of these names ARTEX or is unique to its operators, so one hit is enough to alert. Generic agent user agents (norma, HexStrike) are left out of the rule and shown in panel 17 instead.
 
 ```kql
 let UAs = @"(?i)artex|scopeweaver|spa-api-recon";
@@ -316,7 +316,7 @@ AuditLogs
 
 - A few automation tools rotate their own secrets on a schedule. If one shows up and is expected, exclude it by `InitiatorSpId`.
 
-**📋 Response:** remove the new role or credential, then review the app's other credentials, owners and recent sign-ins (panel 24). If it's compromised, disable the service principal.
+**📋 Response:** remove the new role or credential, then review the app's other credentials, owners and recent sign-ins (panel 19). If it's compromised, disable the service principal.
 
 ---
 
@@ -366,7 +366,7 @@ Rules 7 to 13 return one row per event, so they run as Defender custom detection
 
 ## 7. 🔌 MCP Config Written by a Script
 
-From panel 19. An MCP config for Claude, Cursor, VS Code or Windsurf was created or changed by a shell, script or unknown process instead of the AI app or editor. That's how a malicious MCP server gets planted for persistence.
+From panel 14. An MCP config for Claude, Cursor, VS Code or Windsurf was created or changed by a shell, script or unknown process instead of the AI app or editor. That's how a malicious MCP server gets planted for persistence.
 
 ```kql
 let McpFiles = dynamic(["claude_desktop_config.json", "mcp.json", ".mcp.json", "mcp_config.json"]);
@@ -400,7 +400,7 @@ DeviceFileEvents
 
 ## 8. 🔑 LLM API Key Harvesting
 
-From panel 20. Searching for LLM API keys, sweeping a disk for `.env` files, or reading, copying or uploading Claude, Codex or Copilot credential files.
+From panel 15. Searching for LLM API keys, sweeping a disk for `.env` files, or reading, copying or uploading Claude, Codex or Copilot credential files.
 
 ```kql
 let KeyPrefixes = @"sk-(ant|proj|or)-";
@@ -441,13 +441,13 @@ DeviceProcessEvents
 
 **📋 Response:** rotate every LLM API key and AI tool login on the device, check the provider's usage dashboard for spend or requests you don't recognize, and look for outbound connections from the same process.
 
-> Secret scanners (trufflehog, gitleaks) are left out of this rule because security teams run them routinely. They still show in panel 20.
+> Secret scanners (trufflehog, gitleaks) are left out of this rule because security teams run them routinely. They still show in panel 15.
 
 ---
 
 ## 9. 🐳 Offensive AI or C2 Container
 
-From panel 21. Docker or Podman pulling or running an offensive AI agent (ARTEX, ScopeWeaver and similar) or a C2 framework (Sliver, Empire, Mythic, Havoc, Covenant, Metasploit).
+From panel 16. Docker or Podman pulling or running an offensive AI agent (ARTEX, ScopeWeaver and similar) or a C2 framework (Sliver, Empire, Mythic, Havoc, Covenant, Metasploit).
 
 ```kql
 let ContainerCli = dynamic(["docker", "docker.exe", "podman", "podman.exe", "nerdctl", "docker-compose", "docker-compose.exe"]);
@@ -472,7 +472,7 @@ DeviceProcessEvents
 | 🧩 Impacted entities | Device: `DeviceId` · User: `AccountUpn` |
 | ⚙️ Actions | Optional: isolate device, once you've excluded approved pentest hosts |
 
-> Recon toolkits (Kali, ProjectDiscovery images) are left out of the rule because admins and developers use them too. They still show in panel 21, and panel 21 ranks any of these Critical when the same host also makes unsanctioned LLM calls.
+> Recon toolkits (Kali, ProjectDiscovery images) are left out of the rule because admins and developers use them too. They still show in panel 16, and panel 16 ranks any of these Critical when the same host also makes unsanctioned LLM calls.
 
 ---
 
@@ -509,7 +509,7 @@ DeviceProcessEvents
 
 **🛠️ Tuning**
 
-- Java is left out of the rule (it's in panel 23) because Java apps like Jenkins start shells as part of normal work. Add `java.exe` back for servers that only run a web app.
+- Java is left out of the rule (it's in panel 18) because Java apps like Jenkins start shells as part of normal work. Add `java.exe` back for servers that only run a web app.
 - Some PHP apps call `sh` to send mail. Add those command fragments to `ExcludedCmds`.
 
 **📋 Response:** look at the command line and parent. Check the web root for recently written files (a web shell), and the SQL Server for `xp_cmdshell` being enabled.
@@ -556,7 +556,7 @@ union
 
 **🛠️ Tuning**
 
-- Servers only. Developers use these services from workstations, so workstation hits stay in panel 26.
+- Servers only. Developers use these services from workstations, so workstation hits stay in panel 21.
 - If your organization uses Cloudflare Tunnel on purpose, the rule only catches quick tunnels and `cloudflared tunnel` launches. Exclude your managed tunnel servers by name.
 - On Linux without network protection, `RemoteUrl` is often empty, so the network half may miss Linux servers. The tunnel-process half still works.
 
@@ -664,7 +664,7 @@ DeviceProcessEvents
 | 🔑 8 | On Kali: `grep -r "ANTHROPIC_API_KEY" ~ 2>/dev/null` and `find / -name "*.env" 2>/dev/null`. Neither needs a real key. |
 | 🐳 9 | On Kali with Docker installed: `docker pull sliver-test:latest`. The image doesn't exist, so the pull fails, but the command line is still logged. |
 | 🐚 10 | On windows-vm with IIS: create an `.aspx` test page that runs `cmd.exe /c whoami`, then request it. Or in SQL Server, enable `xp_cmdshell` and run `EXEC xp_cmdshell 'whoami'`. Remove both afterwards. |
-| 📞 11 | Run `curl https://webhook.site/<any-id>`. The rule only fires on servers, so on your Windows 11 VM or Kali the hit shows in panel 26 but not as an alert. To test the alert, use a Windows Server VM or add the device to the `Servers` list. |
+| 📞 11 | Run `curl https://webhook.site/<any-id>`. The rule only fires on servers, so on your Windows 11 VM or Kali the hit shows in panel 21 but not as an alert. To test the alert, use a Windows Server VM or add the device to the `Servers` list. |
 | 🖥️ 12 | On Kali: `python3 -m http.server 8790`, then stop it. |
 | 📦 13 | On Kali: `mkdir -p /tmp/artex-test && echo 'echo hi' > /tmp/artex-test/install.sh && bash /tmp/artex-test/install.sh`. The command line names an `artex` folder and `install.sh`, so it matches without installing anything. Delete the folder afterwards. |
 

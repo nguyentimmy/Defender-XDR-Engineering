@@ -2,7 +2,7 @@
 
 A web server returned a sensitive file with a 2xx response. Treat every alert as a possible secret exposure.
 
-> 📌 Part of the **AI & Autonomous Threats** detection set. Built from workbook panel 17 (Sensitive Path Probes). This is a Microsoft Sentinel scheduled analytic rule.
+> 📌 Part of the **AI & Autonomous Threats** detection set. Built from workbook panel 12 (Sensitive Path Probes). This is a Microsoft Sentinel scheduled analytic rule.
 
 | | |
 |---|---|
@@ -50,7 +50,7 @@ W3CIISLog
 
 ## 🛠️ Tuning
 
-- The path list is narrower than panel 17 on purpose. It leaves out paths that are often legitimate (`/backup` routes, `/actuator/health`, generic `config.json`).
+- The path list is narrower than panel 12 on purpose. It leaves out paths that are often legitimate (`/backup` routes, `/actuator/health`, generic `config.json`).
 - If an app serves one of these paths on purpose, fix it rather than excluding it. Configs and keys shouldn't be in a web root.
 
 ## 📋 Response
