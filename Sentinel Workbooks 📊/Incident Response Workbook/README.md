@@ -1,6 +1,6 @@
 # 🔍 Incident Response Workbook
 
-**On-demand post-compromise investigation for a single device or user account.**
+**On-demand investigation for a single device or user account, before, during and after a compromise.**
 
 Streamlines unified events across device and user compromise into one chronological timeline. Pick an entity, pick a time range, no query editing.
 
@@ -14,10 +14,24 @@ This collapses it into parameterized views. It answers **is something wrong, wha
 
 ---
 
+## 🧭 Phases
+
+Every row in the Device and User tabs is tagged with a **Phase**, so one view covers the whole attack:
+
+| Phase | Answers |
+| --- | --- |
+| 1️⃣ Pre-Compromise | Was this entity targeted? Phishing, spray, brute force, exposed ports, risky downloads, blocked threats |
+| 2️⃣ Initial Access | Did the attack get in? First execution, risky sign-ins, clicked phishing, token replay |
+| 3️⃣ Post-Compromise | What happened next? Persistence, credential theft, lateral movement, mailbox abuse, exfil |
+
+---
+
 ## 🖥️ Device Tab
 
 | Category | Signals |
 | --- | --- |
+| **Targeting & Attempts** | Risky files delivered, admin ports reached from the internet, brute force, blocked threats |
+| **Initial Access** | Office or script spawns, download and execute, malicious PowerShell, logons after failures |
 | **Persistence** | Run keys, Winlogon, scheduled tasks, services, startup folder |
 | **Credential Access** | LSASS dumping, Mimikatz, procdump, comsvcs, nanodump, pypykatz |
 | **Defense Evasion** | Defender tampering, log clearing, auditpol, AMSI/ETW bypass |
@@ -38,6 +52,8 @@ Every row carries the initiating process, its command line, the spawned child pr
 
 | Category | Signals |
 | --- | --- |
+| **Phishing** | Phishing received, Safe Links clicks and click-throughs |
+| **Token Replay** | One session used from several IPs or countries |
 | **MFA Changes** | New authentication methods registered |
 | **Account Takeover** | MFA removed, password resets, device unregistration |
 | **Mailbox Rules** | Forwarding, redirect, and inbox rule creation |
@@ -46,6 +62,7 @@ Every row carries the initiating process, its command line, the spawned child pr
 | **Malicious IPs** | Logons correlated against threat-intel feeds |
 | **OAuth Consent** | App permission grants used for persistence |
 | **Mailbox Export** | eDiscovery and bulk mail export |
+| **Remediation Status** | Sessions revoked, password and MFA reset, account disabled |
 
 ---
 
@@ -94,6 +111,6 @@ Query-backed rather than free text — a typo returns an empty result set that l
 
 ## 📊 Visualization of the Dashboard
 
-Here's an example of the [Device Compromise Triage](Sentinel Workbooks 📊/Incident Response Workbook/Device Compromise Triage/Device Compromise Triage.md) playbook in action:
+Here's an example of the [Device Investigation](Device%20Investigation/Device%20Investigation.md) workbook in action:
 
-![Device Compromise Triage dashboard](Sentinel Workbooks/Incident Response Workbook/Device Compromise Triage/Image/image.png)
+![Device Investigation dashboard](Device%20Investigation/Image/image.png)

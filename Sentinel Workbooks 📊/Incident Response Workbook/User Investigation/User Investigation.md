@@ -1,9 +1,9 @@
 
-# 👤 User Compromise Triage
+# 👤 User Investigation
 
-**On-demand post-compromise investigation for a single account.**
+**On-demand investigation for a single account, from the first phishing email to full takeover.**
 
-Select a user and time range to get a chronological timeline of identity and mailbox activity following a suspected compromise. Built for speed during active BEC and impersonation investigations.
+Select a user and time range to get a chronological timeline of email, identity and mailbox activity before and after a suspected compromise. Built for speed during active BEC and impersonation investigations.
 
 ---
 
@@ -11,7 +11,23 @@ Select a user and time range to get a chronological timeline of identity and mai
 
 Account compromise plays out across Entra ID sign-in logs, directory audit logs, and Exchange mailbox activity — three different tables with three different schemas. Reconstructing what an attacker did to an account means querying all of them and lining up timestamps manually.
 
-This unifies them into one timeline. Use it when a user is named in a phishing report, appears in a risky sign-in alert, or is identified during device triage.
+This unifies them into one timeline. Use it when a user is named in a phishing report, is targeted by a spray or phishing campaign, appears in a risky sign-in alert, or is identified during a device investigation.
+
+---
+
+## 🧭 Phases
+
+Every row also gets a **Phase**, so the same view works before, during and after a compromise:
+
+| Phase | Covers |
+| --- | --- |
+| 1️⃣ Pre-Compromise | Phishing received, blocked phishing clicks, failed brute force and spray, MFA fatigue |
+| 2️⃣ Initial Access | Risky or unusual sign-ins, sign-ins from malicious IPs, clicked-through phishing, successful spray, token replay |
+| 3️⃣ Post-Compromise | MFA and password changes, roles, OAuth consent, app credentials, mailbox rules and delegation, export, mass delete, download and sharing, device logons |
+| 🚨 Alert | Security alerts naming the user |
+| 🧹 Remediation | Whether the account was contained |
+
+Filter on **Phase** to answer "was the user only targeted?" versus "did someone get in, and what did they do?".
 
 ---
 
@@ -19,6 +35,7 @@ This unifies them into one timeline. Use it when a user is named in a phishing r
 
 | Category | Signals |
 | --- | --- |
+| **Phishing Received** | Phish and malware emails delivered to or blocked for the user, with sender, subject and where they landed |
 | **MFA Changes** | New authentication methods registered, device registration |
 | **Account Takeover** | MFA methods deleted, password resets, device unregistration |
 | **Mailbox Rules** | Inbox and transport rules with forwarding, redirect, or blind-copy targets |
@@ -38,7 +55,7 @@ This unifies them into one timeline. Use it when a user is named in a phishing r
 
 ```kql
 // ============================================================
-// USER COMPROMISE IR 1.0 - Workbook (Parameterized, Risk-Scored)
+// USER INVESTIGATION - Workbook (Parameterized, Risk-Scored, Phase-Tagged)
 // Parameters: {UserPrincipalName} (empty = all users), {TimeRange}
 // ============================================================
 let TargetUser = tolower(trim(" ", "{UserPrincipalName}"));
@@ -290,6 +307,19 @@ union isfuzzy=true
         Account = strcat(AccountDomain, "\\", AccountName), IPAddress = RemoteIP, Location = RemoteIPType, DeviceName,
         App = LogonType, Detail = strcat(LogonType, " | Success: ", Success, " | Failed: ", Fail),
         UserAgent = "", EventCount = tolong(Success + Fail)),
+// ---------- 📨 Phishing Received ----------
+(EmailEvents
+    | where TimeGenerated {TimeRange}
+    | where isempty(TargetUser) or tolower(RecipientEmailAddress) == TargetUser
+    | where ThreatTypes has_any ("Phish", "Malware")
+    | where isnotempty(TargetUser) or DeliveryAction == "Delivered"   // all users: only what reached a mailbox
+    | project TimeGenerated, Signal = "📨 Phishing Received",
+        RiskScore = toint(case(DeliveryAction == "Delivered" and DeliveryLocation has "Inbox", 7,
+                               DeliveryAction == "Delivered", 5, 3)),
+        Account = RecipientEmailAddress, IPAddress = SenderIPv4, Location = "", DeviceName = "", App = "Exchange Online",
+        Detail = strcat(DeliveryAction, " to ", DeliveryLocation, " | ", ThreatTypes, " | From: ", SenderFromAddress,
+                        " | ", Subject),
+        UserAgent = "", EventCount = tolong(1)),
 // ---------- 🎣 Phishing Click (root cause, includes 7 days before the range) ----------
 (UrlClickEvents
     | where TimeGenerated between (datetime_add("day", -7, {TimeRange:start}) .. {TimeRange:end})
@@ -357,11 +387,19 @@ union isfuzzy=true
 | summarize Hits = sum(EventCount)
     by TimeGenerated = bin(TimeGenerated, 1m), Signal, RiskScore, Account, IPAddress, Location, DeviceName, App, Detail, UserAgent
 | extend Severity = case(RiskScore >= 9, "Critical", RiskScore >= 7, "High", RiskScore >= 5, "Medium", RiskScore >= 3, "Low", "Informational")
+| extend Phase = case(
+    Signal startswith "🚩", "🚨 Alert",
+    Signal startswith "🧹", "🧹 Remediation",
+    Signal has "Phishing Received" or Signal has "MFA Fatigue"
+        or (Signal has "Brute Force" and RiskScore < 9)
+        or (Signal has "Phishing Click" and RiskScore < 9), "1️⃣ Pre-Compromise",
+    Signal matches regex "Phishing Click|Brute Force|Risky Sign-in|Identity Protection|Impossible Travel|New Country|New OS|Legacy Auth|Malicious IP|Token Replay", "2️⃣ Initial Access",
+    "3️⃣ Post-Compromise")
 | extend IPs  = extract_all(@"(\b\d+\.\d+\.\d+\.\d+\b)", strcat(IPAddress, " ", Detail)),
          Doms = extract_all(@"@([A-Za-z0-9.-]+\.[A-Za-z]+)", Detail)
 | extend IPs = iff(isnull(IPs), dynamic([]), IPs), Doms = iff(isnull(Doms), dynamic([]), Doms)
 | extend IOCs = strcat_array(set_difference(set_union(IPs, Doms), pack_array(UserDomain)), ", ")
-| project TimeGenerated, Severity, RiskScore, Hits, Signal, Account, IPAddress, Location, DeviceName, App, Detail, IOCs, UserAgent
+| project TimeGenerated, Severity, RiskScore, Phase, Hits, Signal, Account, IPAddress, Location, DeviceName, App, Detail, IOCs, UserAgent
 | sort by RiskScore desc, TimeGenerated desc
 ```
 

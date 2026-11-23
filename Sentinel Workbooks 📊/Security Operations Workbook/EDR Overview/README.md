@@ -67,7 +67,7 @@ Full KQL: [ASR/README.md](ASR/README.md)
 | Same ASR rule firing across multiple devices | 🧱 ASR → Hits by Rule / Top Devices |
 | A legitimate app keeps getting blocked | 🧱 ASR → Top Triggering Processes |
 | Deciding which rules to move from Audit to Block | 🧱 ASR → Audit-Only Rules |
-| A device shows up repeatedly | 🔍 Incident Response Workbook (Device Compromise Triage) |
+| A device shows up repeatedly | 🔍 Incident Response Workbook (Device Investigation) |
 
 ---
 
