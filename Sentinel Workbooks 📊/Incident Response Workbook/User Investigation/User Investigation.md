@@ -25,7 +25,6 @@ Every row also gets a **Phase**, so the same view works before, during and after
 | 2️⃣ Initial Access | Risky or unusual sign-ins, sign-ins from malicious IPs, clicked-through phishing, successful spray, token replay |
 | 3️⃣ Post-Compromise | MFA and password changes, roles, OAuth consent, app credentials, mailbox rules and delegation, export, mass delete, download and sharing, device logons |
 | 🚨 Alert | Security alerts naming the user |
-| 🧹 Remediation | Whether the account was contained |
 
 Filter on **Phase** to answer "was the user only targeted?" versus "did someone get in, and what did they do?".
 
@@ -46,7 +45,7 @@ Filter on **Phase** to answer "was the user only targeted?" versus "did someone 
 | **Mailbox Export** | eDiscovery, compliance search, and bulk mail export operations |
 | **Phishing Click** | Risky or blocked Safe Links clicks, including the 7 days before the range, with the email sender and subject |
 | **Token Replay** | One sign-in session used from several IPs or countries, the sign of a stolen session cookie (AiTM) |
-| **Remediation Status** | Whether sessions were revoked, the password and MFA reset by an admin, and the account disabled |
+| **Containment Status** | Whether sessions were revoked, the password and MFA reset by an admin, and the account disabled ([panel](#-containment-status-panel)) |
 | **Sign-In Activity** | Every interactive and non-interactive sign-in, flagged against the user's 30-day baseline ([panel](#-sign-in-activity-panel)) |
 
 ---
@@ -354,24 +353,6 @@ union isfuzzy=true
         DeviceName = "", App = strcat_array(Apps, ", "),
         Detail = strcat("Session ", Sid, " used from ", IPs, " IPs in ", Countries, " countries: ", strcat_array(IPList, ", ")),
         UserAgent = "", EventCount = tolong(Cnt)),
-// ---------- 🧹 Remediation Status (single user only) ----------
-(Audit
-    | where isnotempty(TargetUser) and Target == TargetUser
-    | summarize Revoked = maxif(TimeGenerated, OperationName has_any ("refresh tokens", "sign-in sessions", "Revoke")),
-                PwReset = maxif(TimeGenerated, OperationName has "password" and OperationName !has "security info" and Actor != Target),
-                MfaReset = maxif(TimeGenerated, OperationName has "security info" and Actor != Target),
-                Disabled = maxif(TimeGenerated, OperationName == "Disable account")
-    | where isnotempty(TargetUser)
-    | extend Contained = isnotnull(Revoked) and isnotnull(PwReset)
-    | project TimeGenerated = coalesce(Revoked, PwReset, MfaReset, Disabled, now()),
-        Signal = iff(Contained, "🧹 Remediation: Contained", "🧹 Remediation: Not Contained"),
-        RiskScore = toint(iff(Contained, 2, 7)),
-        Account = TargetUser, IPAddress = "", Location = "", DeviceName = "", App = "Entra ID",
-        Detail = strcat("Sessions revoked: ", iff(isnull(Revoked), "❌ No", format_datetime(Revoked, "yyyy-MM-dd HH:mm")),
-                        " | Password reset by admin: ", iff(isnull(PwReset), "❌ No", format_datetime(PwReset, "yyyy-MM-dd HH:mm")),
-                        " | MFA reset by admin: ", iff(isnull(MfaReset), "❌ No", format_datetime(MfaReset, "yyyy-MM-dd HH:mm")),
-                        " | Disabled: ", iff(isnull(Disabled), "No", format_datetime(Disabled, "yyyy-MM-dd HH:mm"))),
-        UserAgent = "", EventCount = tolong(1)),
 // ---------- 🚩 Security Alerts for User ----------
 (SecurityAlert
     | where TimeGenerated {TimeRange}
@@ -389,7 +370,6 @@ union isfuzzy=true
 | extend Severity = case(RiskScore >= 9, "Critical", RiskScore >= 7, "High", RiskScore >= 5, "Medium", RiskScore >= 3, "Low", "Informational")
 | extend Phase = case(
     Signal startswith "🚩", "🚨 Alert",
-    Signal startswith "🧹", "🧹 Remediation",
     Signal has "Phishing Received" or Signal has "MFA Fatigue"
         or (Signal has "Brute Force" and RiskScore < 9)
         or (Signal has "Phishing Click" and RiskScore < 9), "1️⃣ Pre-Compromise",
@@ -481,3 +461,43 @@ union isfuzzy=true
 - Sort by **Severity** to surface flagged rows first, or by **TimeGenerated** to read the timeline.
 - Non-interactive sign-ins are token refreshes from apps already signed in. A new IP there after a password reset points to a stolen token or session.
 - The baseline covers only the 30 days **before** the time range, so the attacker's own sign-ins don't count as normal.
+
+---
+
+## 🧹 Containment Status Panel
+
+A tile row for the selected user that shows whether the account has been contained. Check it at the end of an investigation, or before closing the incident.
+
+**Visualization:** Tiles (Title: `Metric`, Left: `Status`, Bottom: `When`)  ·  **Parameters:** `{UserPrincipalName}` (required), `{TimeRange}`
+
+```kql
+let TargetUser = tolower(trim(" ", "{UserPrincipalName}"));
+AuditLogs
+| where TimeGenerated {TimeRange}
+| where isnotempty(TargetUser)
+| extend Target = tolower(tostring(TargetResources[0].userPrincipalName)),
+         Actor  = tolower(coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName)))
+| where Target == TargetUser
+| summarize Revoked  = maxif(TimeGenerated, OperationName has_any ("refresh tokens", "sign-in sessions", "Revoke")),
+            PwReset  = maxif(TimeGenerated, OperationName has "password" and OperationName !has "security info" and Actor != Target),
+            MfaReset = maxif(TimeGenerated, OperationName has "security info" and Actor != Target),
+            Disabled = maxif(TimeGenerated, OperationName == "Disable account")
+| where isnotempty(TargetUser)
+| extend Contained = isnotnull(Revoked) and isnotnull(PwReset)
+| extend Rows = pack_array(
+    bag_pack("Order", 1, "Metric", "🧹 Contained", "Done", Contained, "When", ""),
+    bag_pack("Order", 2, "Metric", "🔒 Sessions Revoked", "Done", isnotnull(Revoked), "When", format_datetime(Revoked, "yyyy-MM-dd HH:mm")),
+    bag_pack("Order", 3, "Metric", "🔐 Password Reset by Admin", "Done", isnotnull(PwReset), "When", format_datetime(PwReset, "yyyy-MM-dd HH:mm")),
+    bag_pack("Order", 4, "Metric", "📱 MFA Reset by Admin", "Done", isnotnull(MfaReset), "When", format_datetime(MfaReset, "yyyy-MM-dd HH:mm")),
+    bag_pack("Order", 5, "Metric", "⛔ Account Disabled", "Done", isnotnull(Disabled), "When", format_datetime(Disabled, "yyyy-MM-dd HH:mm")))
+| mv-expand Row = Rows
+| extend Order = toint(Row.Order), Metric = tostring(Row.Metric), Done = tobool(Row.Done), When = tostring(Row.When)
+| extend Status = case(Order == 1 and Done, "✅ Yes", Order == 1, "❌ No", Order == 5 and not(Done), "➖ No", Done, "✅ Done", "❌ Not done")
+| sort by Order asc
+| project Metric, Status, When
+```
+
+**💡 Notes**
+
+- **Contained** means sessions were revoked **and** an admin reset the password. Disabling the account is optional, so it shows ➖ instead of ❌.
+- Only admin actions count. A password change by the user (or an attacker signed in as the user) doesn't mark the account as contained.

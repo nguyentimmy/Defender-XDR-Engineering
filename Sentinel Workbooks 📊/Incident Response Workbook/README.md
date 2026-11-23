@@ -62,7 +62,7 @@ Every row carries the initiating process, its command line, the spawned child pr
 | **Malicious IPs** | Logons correlated against threat-intel feeds |
 | **OAuth Consent** | App permission grants used for persistence |
 | **Mailbox Export** | eDiscovery and bulk mail export |
-| **Remediation Status** | Sessions revoked, password and MFA reset, account disabled |
+| **Containment Status** | Separate tile row: sessions revoked, password and MFA reset, account disabled |
 
 ---
 
