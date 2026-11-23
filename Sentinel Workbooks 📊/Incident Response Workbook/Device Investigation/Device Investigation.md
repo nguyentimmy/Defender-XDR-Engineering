@@ -1591,13 +1591,54 @@ union isfuzzy=true
 
 ## 🧰 Device Context Panels
 
-Three small panels that sit under the timeline. They use the same `{DeviceName}` and `{TimeRange}` parameters and only return data once a device is selected.
+Four small panels that sit under the timeline. They use the same `{DeviceName}` and `{TimeRange}` parameters and only return data once a device is selected.
 
 | Panel | Visualization | Shows |
 |---|---|---|
+| 🖥️ Device Info | Grid | Device profile: OS, last seen, IPs, MAC, internet exposure, group, tags, asset value and sensor health |
 | ⚙️ Processes | Grid | Top 9 processes by run count, with everything else grouped as **Other** |
 | 📋 Details | Grid | Every process and command line on the device, newest first |
 | 🎯 IOC | Grid | Top 9 domains and public IPs by connection count, with the rest grouped as **Other** |
+
+### 🖥️ Device Info
+
+```kql
+let TargetDevice = trim(" ", "{DeviceName}");
+let Net = DeviceNetworkInfo
+    | where TimeGenerated > ago(30d)
+    | where isnotempty(TargetDevice) and DeviceName has TargetDevice
+    | summarize arg_max(TimeGenerated, *) by DeviceId, NetworkAdapterName
+    | mv-expand IP = IPAddresses
+    | extend IPAddr = tostring(IP.IPAddress)
+    | where isnotempty(IPAddr) and not(IPAddr startswith "127." or IPAddr startswith "fe80" or IPAddr == "::1")
+    | summarize PrivateIPs = make_set(IPAddr, 5), MACs = make_set_if(MacAddress, isnotempty(MacAddress), 3) by DeviceId;
+DeviceInfo
+| where TimeGenerated > ago(30d)
+| where isnotempty(TargetDevice) and DeviceName has TargetDevice
+| summarize arg_max(TimeGenerated, *) by DeviceId
+| lookup kind=leftouter Net on DeviceId
+| extend Tags = strcat_array(set_union(todynamic(column_ifexists("DeviceManualTags", "[]")),
+                                       todynamic(column_ifexists("DeviceDynamicTags", "[]"))), ", ")
+| extend Users = strcat_array(extract_all(@'"UserName":"([^"]+)"', tostring(LoggedOnUsers)), ", ")
+| extend Rows = pack_array(
+    bag_pack("Field", "Device", "Value", DeviceName),
+    bag_pack("Field", "OS", "Value", strcat(OSPlatform, " ", column_ifexists("OSDistribution", ""), " ", OSVersion)),
+    bag_pack("Field", "LastSeen", "Value", format_datetime(TimeGenerated, "yyyy-MM-dd HH:mm")),
+    bag_pack("Field", "PrivateIP", "Value", strcat_array(PrivateIPs, ", ")),
+    bag_pack("Field", "MAC", "Value", strcat_array(MACs, ", ")),
+    bag_pack("Field", "PublicIP", "Value", PublicIP),
+    bag_pack("Field", "InternetFacing", "Value", iff(isnull(column_ifexists("IsInternetFacing", bool(null))), "Unknown", tostring(column_ifexists("IsInternetFacing", bool(null))))),
+    bag_pack("Field", "DeviceGroup", "Value", MachineGroup),
+    bag_pack("Field", "Tags", "Value", Tags),
+    bag_pack("Field", "AssetValue", "Value", tostring(column_ifexists("AssetValue", ""))),
+    bag_pack("Field", "ExposureLevel", "Value", tostring(column_ifexists("ExposureLevel", ""))),
+    bag_pack("Field", "Onboarding", "Value", OnboardingStatus),
+    bag_pack("Field", "SensorHealth", "Value", SensorHealthState),
+    bag_pack("Field", "JoinType", "Value", tostring(column_ifexists("JoinType", ""))),
+    bag_pack("Field", "LoggedOnUsers", "Value", Users))
+| mv-expand Row = Rows
+| project Field = tostring(Row.Field), Value = tostring(Row.Value)
+```
 
 ### ⚙️ Processes
 
@@ -1639,3 +1680,8 @@ DeviceNetworkEvents
 | top-nested 9 of IOC with others = "Other" by Connections = count()
 | sort by Connections desc
 ```
+
+**💡 Tips**
+
+- Device Info looks back 30 days regardless of the time range, so it still shows the device profile when the investigation window is short.
+- **PrivateIP** and **MAC** come from `DeviceNetworkInfo`, not `DeviceInfo`. If they're empty on a Linux device, its sensor isn't sending network adapter data.
