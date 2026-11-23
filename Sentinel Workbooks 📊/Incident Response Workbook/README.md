@@ -46,6 +46,8 @@ Every row in the Device and User tabs is tagged with a **Phase**, so one view co
 
 Every row carries the initiating process, its command line, the spawned child process, and the file hash for immediate IOC extraction.
 
+Four context panels sit under the timeline: **🖥️ Device Info** (OS, IPs, MAC, exposure, group, tags), **⚙️ Processes** (top 9 by runs), **📋 Details** (every command line) and **🎯 IOC** (top 9 domains and IPs by connections).
+
 ---
 
 ## 👤 User Tab
