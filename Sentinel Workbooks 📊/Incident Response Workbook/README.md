@@ -66,6 +66,8 @@ Four context panels sit under the timeline: **🖥️ Device Info** (OS, IPs, MA
 | **Mailbox Export** | eDiscovery and bulk mail export |
 | **Containment Status** | Separate tile row: sessions revoked, password and MFA reset, account disabled |
 
+Four context panels sit alongside the timeline: **👤 User Info** (profile, roles, risk, MFA methods, last sign-in), **📱 Apps**, **🌍 IPs & Locations** and **💻 Devices**.
+
 ---
 
 ## 📤 Data Exfiltration Tab

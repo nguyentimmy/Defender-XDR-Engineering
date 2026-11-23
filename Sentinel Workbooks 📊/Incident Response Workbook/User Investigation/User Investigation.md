@@ -532,3 +532,124 @@ EmailEvents
 - 🔴 **Clicked** and 🟠 **In Inbox** rows are the ones to act on: purge the message, block the sender, and check the Phishing Click and sign-in signals that follow.
 - **PostDelivery** shows ZAP or admin removals. An empty value on an In Inbox row means the message is probably still there.
 - Use **NetworkMessageId** to pivot into Threat Explorer or the email entity page.
+
+---
+
+## 🧰 User Context Panels
+
+Four small panels that give the account's background next to the timeline. They use the same `{UserPrincipalName}` and `{TimeRange}` parameters and only return data once a user is selected.
+
+| Panel | Visualization | Shows |
+|---|---|---|
+| 👤 User Info | Grid | Profile: name, title, department, manager, location, enabled, created, roles, groups, risk, MFA methods used and last sign-in |
+| 📱 Apps | Grid | Top 9 apps by sign-ins, with everything else grouped as **Other** |
+| 🌍 IPs & Locations | Grid | Top 9 sign-in IPs with their city and country, with the rest grouped as **Other** |
+| 💻 Devices | Grid | Devices the user signed in from or logged on to, with OS, compliance and last seen |
+
+### 👤 User Info
+
+```kql
+let TargetUser = tolower(trim(" ", "{UserPrincipalName}"));
+let Id = toscalar(union isfuzzy=true
+        (IdentityInfo | where TimeGenerated > ago(14d) | where tolower(AccountUPN) == TargetUser),
+        (datatable(TimeGenerated:datetime)[])
+    | summarize arg_max(TimeGenerated, *)
+    | project pack_all());
+let Ok = SigninLogs
+    | where TimeGenerated > ago(30d)
+    | where tolower(UserPrincipalName) == TargetUser and ResultType == "0";
+let Last = toscalar(Ok
+    | summarize arg_max(TimeGenerated, IPAddress, AppDisplayName, LocationDetails)
+    | project pack_all());
+let Mfa = toscalar(Ok
+    | mv-expand d = todynamic(AuthenticationDetails)
+    | extend Method = tostring(d.authenticationMethod)
+    | where isnotempty(Method) and Method !in ("Previously satisfied", "Password")
+    | summarize make_set(Method, 5));
+print Rows = pack_array(
+    bag_pack("Field", "User", "Value", TargetUser),
+    bag_pack("Field", "DisplayName", "Value", tostring(Id.AccountDisplayName)),
+    bag_pack("Field", "JobTitle", "Value", tostring(Id.JobTitle)),
+    bag_pack("Field", "Department", "Value", tostring(Id.Department)),
+    bag_pack("Field", "Manager", "Value", tostring(Id.Manager)),
+    bag_pack("Field", "Location", "Value", strcat(tostring(Id.City), ", ", tostring(Id.Country))),
+    bag_pack("Field", "AccountEnabled", "Value", tostring(Id.IsAccountEnabled)),
+    bag_pack("Field", "Created", "Value", format_datetime(todatetime(Id.AccountCreationTime), "yyyy-MM-dd")),
+    bag_pack("Field", "Roles", "Value", strcat_array(todynamic(Id.AssignedRoles), ", ")),
+    bag_pack("Field", "Groups", "Value", tostring(array_length(todynamic(Id.GroupMembership)))),
+    bag_pack("Field", "RiskLevel", "Value", strcat(tostring(Id.RiskLevel), " ", tostring(Id.RiskState))),
+    bag_pack("Field", "MFAMethods (30d)", "Value", strcat_array(Mfa, ", ")),
+    bag_pack("Field", "LastSignIn", "Value", strcat(format_datetime(todatetime(Last.TimeGenerated), "yyyy-MM-dd HH:mm"), " | ",
+        tostring(Last.IPAddress), " | ", tostring(Last.LocationDetails.countryOrRegion), " | ", tostring(Last.AppDisplayName))))
+| where isnotempty(TargetUser)
+| mv-expand Row = Rows
+| project Field = tostring(Row.Field), Value = tostring(Row.Value)
+```
+
+### 📱 Apps
+
+```kql
+let TargetUser = tolower(trim(" ", "{UserPrincipalName}"));
+union isfuzzy=true SigninLogs, AADNonInteractiveUserSignInLogs
+| where TimeGenerated {TimeRange}
+| where isnotempty(TargetUser) and tolower(UserPrincipalName) == TargetUser
+| top-nested 9 of AppDisplayName with others = "Other" by SignIns = count()
+| project App = AppDisplayName, SignIns
+| sort by SignIns desc
+```
+
+### 🌍 IPs & Locations
+
+```kql
+let TargetUser = tolower(trim(" ", "{UserPrincipalName}"));
+union isfuzzy=true
+    (SigninLogs
+        | where TimeGenerated {TimeRange}
+        | extend Loc = LocationDetails),
+    (AADNonInteractiveUserSignInLogs
+        | where TimeGenerated {TimeRange}
+        | extend Loc = todynamic(LocationDetails))
+| where isnotempty(TargetUser) and tolower(UserPrincipalName) == TargetUser
+| extend Source = strcat(IPAddress, " (", tostring(Loc.city), ", ", tostring(Loc.countryOrRegion), ")")
+| top-nested 9 of Source with others = "Other" by SignIns = count()
+| project Source, SignIns
+| sort by SignIns desc
+```
+
+### 💻 Devices
+
+```kql
+let TargetUser = tolower(trim(" ", "{UserPrincipalName}"));
+let UserLocal = tostring(split(TargetUser, "@")[0]);
+union isfuzzy=true
+    (SigninLogs
+        | where TimeGenerated {TimeRange}
+        | where isnotempty(TargetUser) and tolower(UserPrincipalName) == TargetUser
+        | extend Dev = DeviceDetail
+        | extend Device = tolower(tostring(Dev.displayName))
+        | where isnotempty(Device)
+        | summarize SignIns = count(), LastSeen = max(TimeGenerated),
+                    OS = take_any(tostring(Dev.operatingSystem)), Compliant = take_any(tostring(Dev.isCompliant)),
+                    TrustType = take_any(tostring(Dev.trustType))
+                 by Device
+        | extend Logons = 0),
+    (DeviceLogonEvents
+        | where TimeGenerated {TimeRange}
+        | where isnotempty(UserLocal) and tolower(AccountName) == UserLocal
+        | where ActionType == "LogonSuccess"
+        | extend Device = tolower(tostring(split(DeviceName, ".")[0]))
+        | summarize Logons = count(), LastSeen = max(TimeGenerated) by Device
+        | extend SignIns = 0)
+| summarize SignIns = sum(SignIns), Logons = sum(Logons), LastSeen = max(LastSeen),
+            OS = take_anyif(OS, isnotempty(OS)), Compliant = take_anyif(Compliant, isnotempty(Compliant)),
+            TrustType = take_anyif(TrustType, isnotempty(TrustType))
+         by Device
+| sort by LastSeen desc
+| project Device, OS, Compliant, TrustType, SignIns, Logons, LastSeen
+```
+
+**💡 Tips**
+
+- User Info reads `IdentityInfo`, which needs **UEBA** turned on in Sentinel. Without it, only the user, MFA methods and last sign-in fill in.
+- User Info and MFA methods look back 30 days regardless of the time range, so the profile still shows during a short investigation window.
+- An unknown device in **Devices**, or a new IP in **IPs & Locations**, is a quick pivot into the Device Investigation workbook.
