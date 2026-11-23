@@ -27,6 +27,7 @@ This unifies them into one timeline. Use it when a user is named in a phishing r
 | **Malicious IPs** | Logons correlated against threat-intel feeds (botnet C2, Tor exit nodes) |
 | **OAuth Consent** | Application permission grants — persistent access that survives a password reset |
 | **Mailbox Export** | eDiscovery, compliance search, and bulk mail export operations |
+| **Sign-In Activity** | Every interactive and non-interactive sign-in, flagged against the user's 30-day baseline ([panel](#-sign-in-activity-panel)) |
 
 ---
 
@@ -308,3 +309,82 @@ union isfuzzy=true
 | project TimeGenerated, Severity, RiskScore, Hits, Signal, Account, IPAddress, Location, DeviceName, App, Detail, IOCs, UserAgent
 | sort by RiskScore desc, TimeGenerated desc
 ```
+
+---
+
+## 🔐 Sign-In Activity Panel
+
+A second grid panel that lists every sign-in for the selected user, interactive and non-interactive, grouped by hour, IP, app and device. Each row is flagged against the user's own 30-day baseline, so new countries, new IPs and new devices stand out.
+
+**Visualization:** Grid  ·  **Parameters:** `{UserPrincipalName}` (required), `{TimeRange}`
+
+| Flag | Meaning |
+| --- | --- |
+| 🌍 New Country | Successful sign-in from a country not seen in the last 30 days |
+| 🆕 New IP | IP not seen in the user's successful sign-ins in the last 30 days |
+| 💻 New OS/Browser | OS and browser pair not seen before |
+| 🧓 Legacy Auth | IMAP, POP, SMTP, ActiveSync or other legacy clients |
+| 🚨 Risky | Entra ID rated the sign-in medium or high risk |
+| 📲 MFA Denied | MFA challenge failed or was denied |
+| 🔓 Single-Factor | Successful sign-in that only needed a password |
+
+```kql
+let TargetUser = tolower(trim(" ", "{UserPrincipalName}"));
+let LegacyClients = dynamic([
+    "Exchange ActiveSync", "IMAP4", "POP3", "Authenticated SMTP", "Other clients",
+    "Exchange Web Services", "AutoDiscover", "Offline Address Book",
+    "Outlook Anywhere (RPC over HTTP)", "Exchange Online PowerShell"]);
+let Base = SigninLogs
+    | where TimeGenerated between (ago(30d) .. {TimeRange:start})
+    | where tolower(UserPrincipalName) == TargetUser and ResultType == "0";
+let BaseCountries = toscalar(Base | summarize make_set(tostring(LocationDetails.countryOrRegion), 200));
+let BaseIPs = toscalar(Base | summarize make_set(IPAddress, 1000));
+let BaseOSBrowser = toscalar(Base | summarize make_set(strcat(tostring(DeviceDetail.operatingSystem), " | ",
+    tostring(split(tostring(DeviceDetail.browser), " ")[0])), 200));
+union isfuzzy=true
+    (SigninLogs
+        | where TimeGenerated {TimeRange}
+        | where tolower(UserPrincipalName) == TargetUser
+        | extend SignInType = "Interactive", Loc = LocationDetails, Dev = DeviceDetail),
+    (AADNonInteractiveUserSignInLogs
+        | where TimeGenerated {TimeRange}
+        | where tolower(UserPrincipalName) == TargetUser
+        | extend SignInType = "Non-interactive", Loc = todynamic(LocationDetails), Dev = todynamic(DeviceDetail))
+| extend Country = tostring(Loc.countryOrRegion),
+         Location = strcat(tostring(Loc.city), ", ", tostring(Loc.countryOrRegion)),
+         OSBrowser = strcat(tostring(Dev.operatingSystem), " | ", tostring(split(tostring(Dev.browser), " ")[0])),
+         DeviceName = tostring(Dev.displayName),
+         Compliant = tostring(Dev.isCompliant),
+         Success = ResultType == "0"
+| extend Flags = strcat_array(array_concat(
+    iff(Success and isnotempty(Country) and not(set_has_element(BaseCountries, Country)), dynamic(["🌍 New Country"]), dynamic([])),
+    iff(Success and not(set_has_element(BaseIPs, IPAddress)), dynamic(["🆕 New IP"]), dynamic([])),
+    iff(Success and not(set_has_element(BaseOSBrowser, OSBrowser)), dynamic(["💻 New OS/Browser"]), dynamic([])),
+    iff(ClientAppUsed in (LegacyClients), dynamic(["🧓 Legacy Auth"]), dynamic([])),
+    iff(RiskLevelDuringSignIn in ("medium", "high"), dynamic(["🚨 Risky"]), dynamic([])),
+    iff(ResultType == "500121", dynamic(["📲 MFA Denied"]), dynamic([])),
+    iff(Success and AuthenticationRequirement == "singleFactorAuthentication" and SignInType == "Interactive", dynamic(["🔓 Single-Factor"]), dynamic([]))), " ")
+| summarize SignIns = count(),
+            Failures = countif(not(Success)),
+            Results = make_set(iff(Success, "Success", strcat(ResultType, " ", ResultDescription)), 5),
+            Flags = take_any(Flags),
+            Risk = take_any(RiskLevelDuringSignIn),
+            CAStatus = take_any(ConditionalAccessStatus),
+            UserAgent = take_any(UserAgent)
+         by TimeGenerated = bin(TimeGenerated, 1h), SignInType, IPAddress, Location, AppDisplayName, ClientAppUsed,
+            OSBrowser, DeviceName, Compliant
+| extend RiskScore = toint(
+    iff(Flags has "Risky", 3, 0) + iff(Flags has "New Country", 3, 0) + iff(Flags has "Legacy Auth", 2, 0)
+    + iff(Flags has "MFA Denied", 2, 0) + iff(Flags has "New IP", 1, 0) + iff(Flags has "New OS", 1, 0)
+    + iff(Flags has "Single-Factor", 1, 0))
+| extend Severity = case(RiskScore >= 6, "🔴 High", RiskScore >= 3, "🟠 Medium", RiskScore >= 1, "🟡 Low", "⚪ Normal")
+| sort by TimeGenerated desc
+| project TimeGenerated, Severity, Flags, SignInType, IPAddress, Location, AppDisplayName, ClientAppUsed, SignIns, Failures,
+          Results, OSBrowser, DeviceName, Compliant, Risk, CAStatus, UserAgent
+```
+
+**💡 Tips**
+
+- Sort by **Severity** to surface flagged rows first, or by **TimeGenerated** to read the timeline.
+- Non-interactive sign-ins are token refreshes from apps already signed in. A new IP there after a password reset points to a stolen token or session.
+- The baseline covers only the 30 days **before** the time range, so the attacker's own sign-ins don't count as normal.
