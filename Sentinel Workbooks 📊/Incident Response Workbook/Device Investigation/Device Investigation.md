@@ -1586,3 +1586,139 @@ union isfuzzy=true
           Detail, IOCs, InitiatingProcess, InitiatingProcessCmd, ChildProcess, SHA256, ThreatName, Action
 | sort by RiskScore desc, TimeGenerated desc
 ```
+
+---
+
+## 🧰 Device Context Panels
+
+Three extra panels that sit under the timeline. They use the same `{DeviceName}` and `{TimeRange}` parameters and only return data once a device is selected.
+
+| Panel | Visualization | Shows |
+|---|---|---|
+| 🔟 Top 10 Processes | Grid | The most-run processes on the device, with parents, accounts, sample command lines and how rare each one is across the fleet |
+| 🎯 IOCs | Grid | Public IPs, domains and file hashes seen on the device, with threat-intel matches first |
+| 📁 Files | Grid | Risky files created, changed, renamed or deleted in user-writable paths, and whether they were later run |
+
+### 🔟 Top 10 Processes
+
+**Visualization:** Grid
+
+```kql
+let TargetDevice = trim(" ", "{DeviceName}");
+let Top = DeviceProcessEvents
+    | where TimeGenerated {TimeRange}
+    | where isnotempty(TargetDevice) and DeviceName has TargetDevice
+    | summarize Executions = count(),
+                DistinctCmds = dcount(ProcessCommandLine),
+                SampleCmds = make_set(substring(ProcessCommandLine, 0, 300), 3),
+                Parents = make_set(InitiatingProcessFileName, 5),
+                Accounts = make_set(AccountName, 5),
+                Paths = make_set(FolderPath, 3),
+                SHA256 = take_any(SHA256),
+                FirstSeen = min(TimeGenerated),
+                LastSeen = max(TimeGenerated)
+             by FileName = tolower(FileName)
+    | top 10 by Executions desc;
+let Fleet = DeviceProcessEvents
+    | where TimeGenerated {TimeRange}
+    | where tolower(FileName) in ((Top | project FileName))
+    | summarize FleetDevices = dcount(DeviceId) by FileName = tolower(FileName);
+Top
+| lookup kind=leftouter Fleet on FileName
+| extend Prevalence = case(FleetDevices <= 2, "🔴 Rare", FleetDevices <= 10, "🟡 Uncommon", "⚪ Common")
+| sort by Executions desc
+| project FileName, Executions, Prevalence, FleetDevices, DistinctCmds, Parents, Accounts, Paths, SampleCmds, SHA256, FirstSeen, LastSeen
+```
+
+### 🎯 IOCs
+
+**Visualization:** Grid
+
+```kql
+let TargetDevice = trim(" ", "{DeviceName}");
+let IgnoreDomains = dynamic(["microsoft.com", "windows.com", "windowsupdate.com", "office.com", "office.net", "live.com",
+    "msftconnecttest.com", "azure.com", "azureedge.net", "digicert.com", "google.com", "gstatic.com", "googleapis.com"]);
+let TI = ThreatIntelIndicators
+    | where TimeGenerated > ago(30d)
+    | summarize arg_max(TimeGenerated, *) by Id
+    | where IsActive == true
+    | summarize TIDesc = take_any(tostring(Data.description)) by IOC = tolower(ObservableValue);
+let Net = DeviceNetworkEvents
+    | where TimeGenerated {TimeRange}
+    | where isnotempty(TargetDevice) and DeviceName has TargetDevice;
+union isfuzzy=true
+    (Net
+        | where RemoteIPType == "Public"
+        | summarize Hits = count(), Processes = make_set(InitiatingProcessFileName, 5), Ports = make_set(RemotePort, 5),
+                    FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated)
+                 by IOC = RemoteIP
+        | extend Type = "🌐 IP", Context = strcat("Ports: ", strcat_array(Ports, ", "))),
+    (Net
+        | where isnotempty(RemoteUrl)
+        | extend IOC = extract(@"^(?:[a-z]+://)?([^/:]+)", 1, tolower(RemoteUrl))
+        | where isnotempty(IOC) and not(IOC has_any (IgnoreDomains))
+        | summarize Hits = count(), Processes = make_set(InitiatingProcessFileName, 5), IPs = make_set(RemoteIP, 3),
+                    FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated)
+                 by IOC
+        | extend Type = "🔗 Domain", Context = strcat("IPs: ", strcat_array(IPs, ", "))),
+    (union DeviceProcessEvents, DeviceFileEvents
+        | where TimeGenerated {TimeRange}
+        | where isnotempty(TargetDevice) and DeviceName has TargetDevice
+        | where isnotempty(SHA256)
+        | where FileName matches regex @"(?i)\.(exe|dll|scr|sys|msi|ps1|bat|cmd|vbs|js|hta|lnk|iso|zip|rar|7z)$"
+        | where not(FolderPath startswith @"C:\Windows\" or FolderPath startswith @"C:\Program Files")
+        | summarize Hits = count(), Processes = make_set(InitiatingProcessFileName, 5), Path = take_any(FolderPath),
+                    FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated)
+                 by IOC = tolower(SHA256), FileName
+        | extend Type = "🧬 SHA256", Context = strcat(FileName, " | ", Path))
+| lookup kind=leftouter TI on IOC
+| extend TIHit = isnotempty(TIDesc)
+| extend Flag = case(TIHit, "🔴 Threat Intel Match", Hits <= 3, "🟡 Rare", "⚪ Seen Often")
+| sort by TIHit desc, Hits asc
+| take 200
+| project Flag, Type, IOC, Context, Hits, Processes, TIDesc, FirstSeen, LastSeen
+```
+
+### 📁 Files
+
+**Visualization:** Grid
+
+```kql
+let TargetDevice = trim(" ", "{DeviceName}");
+let RiskyExt = @"(?i)\.(exe|dll|scr|sys|msi|ps1|psm1|bat|cmd|vbs|vbe|js|jse|wsf|hta|lnk|iso|img|vhdx?|zip|rar|7z|one|xll|docm|xlsm|pptm|py|sh|so)$";
+let UserWritable = @"(?i)(\\users\\[^\\]+\\(appdata|downloads|desktop|documents)\\|\\programdata\\|\\windows\\temp\\|\\temp\\|\\users\\public\\|^/tmp/|^/var/tmp/|^/dev/shm/|^/home/)";
+let Ran = DeviceProcessEvents
+    | where TimeGenerated {TimeRange}
+    | where isnotempty(TargetDevice) and DeviceName has TargetDevice
+    | where isnotempty(SHA256)
+    | distinct SHA256;
+DeviceFileEvents
+| where TimeGenerated {TimeRange}
+| where isnotempty(TargetDevice) and DeviceName has TargetDevice
+| where ActionType in ("FileCreated", "FileModified", "FileRenamed", "FileDeleted")
+| where (FileName matches regex RiskyExt and (FolderPath matches regex UserWritable or isnotempty(FileOriginUrl)))
+    or FolderPath matches regex @"^/(tmp|var/tmp|dev/shm)/"
+| summarize Events = count(),
+            Actions = make_set(ActionType, 4),
+            Process = take_any(InitiatingProcessFileName),
+            ProcessCmd = take_any(substring(InitiatingProcessCommandLine, 0, 300)),
+            Account = take_any(InitiatingProcessAccountName),
+            OriginUrl = take_anyif(FileOriginUrl, isnotempty(FileOriginUrl)),
+            FirstSeen = min(TimeGenerated),
+            LastSeen = max(TimeGenerated)
+         by FileName, FolderPath, SHA256
+| extend Executed = isnotempty(SHA256) and SHA256 in (Ran),
+         Downloaded = isnotempty(OriginUrl),
+         Deleted = set_has_element(Actions, "FileDeleted")
+| extend SevRank = case(Executed and Downloaded, 1, Executed, 2, Downloaded, 3, Deleted, 3, 4)
+| extend Severity = case(SevRank == 1, "🔴 Downloaded & Run", SevRank == 2, "🟠 Run", SevRank == 3, "🟡 Downloaded / Deleted", "⚪ Written")
+| sort by SevRank asc, LastSeen desc
+| take 200
+| project LastSeen, Severity, FileName, FolderPath, Actions, Executed, Downloaded, OriginUrl, Process, ProcessCmd, Account, SHA256, Events, FirstSeen
+```
+
+**💡 Tips**
+
+- Top 10 Processes is by volume, so system processes usually lead. The **Prevalence** column is what matters: a 🔴 Rare process in the top 10 is worth a look.
+- The IOC panel skips common Microsoft and Google domains. Add your own SaaS domains to `IgnoreDomains` to cut more noise.
+- In Files, a 🔴 **Downloaded & Run** row is the strongest lead: a file that came from the internet and then executed.
