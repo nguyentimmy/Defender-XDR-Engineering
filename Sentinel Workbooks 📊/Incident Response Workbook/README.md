@@ -54,7 +54,7 @@ Four context panels sit under the timeline: **🖥️ Device Info** (OS, IPs, MA
 
 | Category | Signals |
 | --- | --- |
-| **Phishing** | Phishing received, Safe Links clicks and click-throughs |
+| **Phishing** | Safe Links clicks and click-throughs in the timeline, plus a separate Phishing Received panel |
 | **Token Replay** | One session used from several IPs or countries |
 | **MFA Changes** | New authentication methods registered |
 | **Account Takeover** | MFA removed, password resets, device unregistration |

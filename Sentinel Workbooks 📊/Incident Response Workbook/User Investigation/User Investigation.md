@@ -21,7 +21,7 @@ Every row also gets a **Phase**, so the same view works before, during and after
 
 | Phase | Covers |
 | --- | --- |
-| 1️⃣ Pre-Compromise | Phishing received, blocked phishing clicks, failed brute force and spray, MFA fatigue |
+| 1️⃣ Pre-Compromise | Blocked phishing clicks, failed brute force and spray, MFA fatigue (phishing received has its own panel) |
 | 2️⃣ Initial Access | Risky or unusual sign-ins, sign-ins from malicious IPs, clicked-through phishing, successful spray, token replay |
 | 3️⃣ Post-Compromise | MFA and password changes, roles, OAuth consent, app credentials, mailbox rules and delegation, export, mass delete, download and sharing, device logons |
 | 🚨 Alert | Security alerts naming the user |
@@ -34,7 +34,7 @@ Filter on **Phase** to answer "was the user only targeted?" versus "did someone 
 
 | Category | Signals |
 | --- | --- |
-| **Phishing Received** | Phish and malware emails delivered to or blocked for the user, with sender, subject and where they landed |
+| **Phishing Received** | Phish, malware and spam sent to the user, whether it reached the inbox, was clicked or was removed later ([panel](#-phishing-received-panel)) |
 | **MFA Changes** | New authentication methods registered, device registration |
 | **Account Takeover** | MFA methods deleted, password resets, device unregistration |
 | **Mailbox Rules** | Inbox and transport rules with forwarding, redirect, or blind-copy targets |
@@ -306,19 +306,6 @@ union isfuzzy=true
         Account = strcat(AccountDomain, "\\", AccountName), IPAddress = RemoteIP, Location = RemoteIPType, DeviceName,
         App = LogonType, Detail = strcat(LogonType, " | Success: ", Success, " | Failed: ", Fail),
         UserAgent = "", EventCount = tolong(Success + Fail)),
-// ---------- 📨 Phishing Received ----------
-(EmailEvents
-    | where TimeGenerated {TimeRange}
-    | where isempty(TargetUser) or tolower(RecipientEmailAddress) == TargetUser
-    | where ThreatTypes has_any ("Phish", "Malware")
-    | where isnotempty(TargetUser) or DeliveryAction == "Delivered"   // all users: only what reached a mailbox
-    | project TimeGenerated, Signal = "📨 Phishing Received",
-        RiskScore = toint(case(DeliveryAction == "Delivered" and DeliveryLocation has "Inbox", 7,
-                               DeliveryAction == "Delivered", 5, 3)),
-        Account = RecipientEmailAddress, IPAddress = SenderIPv4, Location = "", DeviceName = "", App = "Exchange Online",
-        Detail = strcat(DeliveryAction, " to ", DeliveryLocation, " | ", ThreatTypes, " | From: ", SenderFromAddress,
-                        " | ", Subject),
-        UserAgent = "", EventCount = tolong(1)),
 // ---------- 🎣 Phishing Click (root cause, includes 7 days before the range) ----------
 (UrlClickEvents
     | where TimeGenerated between (datetime_add("day", -7, {TimeRange:start}) .. {TimeRange:end})
@@ -370,7 +357,7 @@ union isfuzzy=true
 | extend Severity = case(RiskScore >= 9, "Critical", RiskScore >= 7, "High", RiskScore >= 5, "Medium", RiskScore >= 3, "Low", "Informational")
 | extend Phase = case(
     Signal startswith "🚩", "🚨 Alert",
-    Signal has "Phishing Received" or Signal has "MFA Fatigue"
+    Signal has "MFA Fatigue"
         or (Signal has "Brute Force" and RiskScore < 9)
         or (Signal has "Phishing Click" and RiskScore < 9), "1️⃣ Pre-Compromise",
     Signal matches regex "Phishing Click|Brute Force|Risky Sign-in|Identity Protection|Impossible Travel|New Country|New OS|Legacy Auth|Malicious IP|Token Replay", "2️⃣ Initial Access",
@@ -501,3 +488,47 @@ AuditLogs
 
 - **Contained** means sessions were revoked **and** an admin reset the password. Disabling the account is optional, so it shows ➖ instead of ❌.
 - Only admin actions count. A password change by the user (or an attacker signed in as the user) doesn't mark the account as contained.
+
+---
+
+## 📨 Phishing Received Panel
+
+Every phishing, malware and spam email sent to the selected user, ranked by how far it got: clicked, sitting in the inbox, delivered to junk, or blocked. Shows whether Safe Links recorded a click and whether the message was removed after delivery (ZAP or an admin).
+
+**Visualization:** Grid  ·  **Parameters:** `{UserPrincipalName}` (required), `{TimeRange}`
+
+```kql
+let TargetUser = tolower(trim(" ", "{UserPrincipalName}"));
+let Clicks = UrlClickEvents
+    | where TimeGenerated {TimeRange}
+    | where tolower(AccountUpn) == TargetUser
+    | summarize Clicks = count(), ClickedThrough = countif(IsClickedThrough == true), ClickedUrls = make_set(Url, 3)
+             by NetworkMessageId;
+let PostDelivery = EmailPostDeliveryEvents
+    | where TimeGenerated {TimeRange}
+    | where tolower(RecipientEmailAddress) == TargetUser
+    | summarize PostDelivery = make_set(strcat(Action, " (", ActionType, ")"), 3) by NetworkMessageId;
+EmailEvents
+| where TimeGenerated {TimeRange}
+| where isnotempty(TargetUser) and tolower(RecipientEmailAddress) == TargetUser
+| where isnotempty(ThreatTypes)
+| lookup kind=leftouter Clicks on NetworkMessageId
+| lookup kind=leftouter PostDelivery on NetworkMessageId
+| extend Clicks = coalesce(Clicks, 0), ClickedThrough = coalesce(ClickedThrough, 0)
+| extend IsPhish = ThreatTypes has_any ("Phish", "Malware")
+| extend SevRank = case(
+    Clicks > 0 and (IsPhish or ClickedThrough > 0), 1,
+    IsPhish and DeliveryAction == "Delivered" and DeliveryLocation has "Inbox", 2,
+    DeliveryAction == "Delivered", 3,
+    4)
+| extend Severity = case(SevRank == 1, "🔴 Clicked", SevRank == 2, "🟠 In Inbox", SevRank == 3, "🟡 Delivered", "⚪ Blocked")
+| sort by SevRank asc, TimeGenerated desc
+| project TimeGenerated, Severity, ThreatTypes, DeliveryAction, DeliveryLocation, SenderFromAddress, SenderIPv4, Subject,
+          UrlCount, AttachmentCount, Clicks, ClickedThrough, ClickedUrls, PostDelivery, DetectionMethods, NetworkMessageId
+```
+
+**💡 Tips**
+
+- 🔴 **Clicked** and 🟠 **In Inbox** rows are the ones to act on: purge the message, block the sender, and check the Phishing Click and sign-in signals that follow.
+- **PostDelivery** shows ZAP or admin removals. An empty value on an In Inbox row means the message is probably still there.
+- Use **NetworkMessageId** to pivot into Threat Explorer or the email entity page.
