@@ -27,6 +27,9 @@ This unifies them into one timeline. Use it when a user is named in a phishing r
 | **Malicious IPs** | Logons correlated against threat-intel feeds (botnet C2, Tor exit nodes) |
 | **OAuth Consent** | Application permission grants — persistent access that survives a password reset |
 | **Mailbox Export** | eDiscovery, compliance search, and bulk mail export operations |
+| **Phishing Click** | Risky or blocked Safe Links clicks, including the 7 days before the range, with the email sender and subject |
+| **Token Replay** | One sign-in session used from several IPs or countries, the sign of a stolen session cookie (AiTM) |
+| **Remediation Status** | Whether sessions were revoked, the password and MFA reset by an admin, and the account disabled |
 | **Sign-In Activity** | Every interactive and non-interactive sign-in, flagged against the user's 30-day baseline ([panel](#-sign-in-activity-panel)) |
 
 ---
@@ -287,6 +290,58 @@ union isfuzzy=true
         Account = strcat(AccountDomain, "\\", AccountName), IPAddress = RemoteIP, Location = RemoteIPType, DeviceName,
         App = LogonType, Detail = strcat(LogonType, " | Success: ", Success, " | Failed: ", Fail),
         UserAgent = "", EventCount = tolong(Success + Fail)),
+// ---------- 🎣 Phishing Click (root cause, includes 7 days before the range) ----------
+(UrlClickEvents
+    | where TimeGenerated between (datetime_add("day", -7, {TimeRange:start}) .. {TimeRange:end})
+    | where isempty(TargetUser) or tolower(AccountUpn) == TargetUser
+    | where isnotempty(ThreatTypes) or IsClickedThrough == true or ActionType has "Blocked"
+    | lookup kind=leftouter (EmailEvents
+        | where TimeGenerated > ago(30d)
+        | where isempty(TargetUser) or tolower(RecipientEmailAddress) == TargetUser
+        | summarize SenderFromAddress = take_any(SenderFromAddress), Subject = take_any(Subject) by NetworkMessageId)
+        on NetworkMessageId
+    | project TimeGenerated, Signal = "🎣 Phishing Click",
+        RiskScore = toint(case(IsClickedThrough == true, 9, ActionType == "ClickAllowed" and isnotempty(ThreatTypes), 9, 6)),
+        Account = AccountUpn, IPAddress, Location = "", DeviceName = "", App = Workload,
+        Detail = strcat(ActionType, iff(IsClickedThrough == true, " (clicked through warning)", ""), " | ", Url,
+                        iff(isnotempty(ThreatTypes), strcat(" | Threats: ", ThreatTypes), ""),
+                        iff(isnotempty(SenderFromAddress), strcat(" | From: ", SenderFromAddress, " | ", Subject), "")),
+        UserAgent = "", EventCount = tolong(1)),
+// ---------- 🍪 Token Replay (one session, many IPs or countries) ----------
+(union isfuzzy=true
+    (SigninLogs | where TimeGenerated {TimeRange} | extend Loc = LocationDetails),
+    (AADNonInteractiveUserSignInLogs | where TimeGenerated {TimeRange} | extend Loc = todynamic(LocationDetails))
+    | where isempty(TargetUser) or tolower(UserPrincipalName) == TargetUser
+    | where ResultType == "0"
+    | extend Sid = tostring(column_ifexists("SessionId", "")), Country = tostring(Loc.countryOrRegion)
+    | where isnotempty(Sid)
+    | summarize IPs = dcount(IPAddress), Countries = dcount(Country), IPList = make_set(IPAddress, 10),
+                CountryList = make_set(Country, 5), Apps = make_set(AppDisplayName, 5), First = min(TimeGenerated), Cnt = count()
+        by UserPrincipalName, Sid
+    | where Countries >= 2 or IPs >= 4
+    | project TimeGenerated = First, Signal = "🍪 Token Replay", RiskScore = toint(iff(Countries >= 2, 9, 6)),
+        Account = UserPrincipalName, IPAddress = tostring(IPList[0]), Location = strcat_array(CountryList, ", "),
+        DeviceName = "", App = strcat_array(Apps, ", "),
+        Detail = strcat("Session ", Sid, " used from ", IPs, " IPs in ", Countries, " countries: ", strcat_array(IPList, ", ")),
+        UserAgent = "", EventCount = tolong(Cnt)),
+// ---------- 🧹 Remediation Status (single user only) ----------
+(Audit
+    | where isnotempty(TargetUser) and Target == TargetUser
+    | summarize Revoked = maxif(TimeGenerated, OperationName has_any ("refresh tokens", "sign-in sessions", "Revoke")),
+                PwReset = maxif(TimeGenerated, OperationName has "password" and OperationName !has "security info" and Actor != Target),
+                MfaReset = maxif(TimeGenerated, OperationName has "security info" and Actor != Target),
+                Disabled = maxif(TimeGenerated, OperationName == "Disable account")
+    | where isnotempty(TargetUser)
+    | extend Contained = isnotnull(Revoked) and isnotnull(PwReset)
+    | project TimeGenerated = coalesce(Revoked, PwReset, MfaReset, Disabled, now()),
+        Signal = iff(Contained, "🧹 Remediation: Contained", "🧹 Remediation: Not Contained"),
+        RiskScore = toint(iff(Contained, 2, 7)),
+        Account = TargetUser, IPAddress = "", Location = "", DeviceName = "", App = "Entra ID",
+        Detail = strcat("Sessions revoked: ", iff(isnull(Revoked), "❌ No", format_datetime(Revoked, "yyyy-MM-dd HH:mm")),
+                        " | Password reset by admin: ", iff(isnull(PwReset), "❌ No", format_datetime(PwReset, "yyyy-MM-dd HH:mm")),
+                        " | MFA reset by admin: ", iff(isnull(MfaReset), "❌ No", format_datetime(MfaReset, "yyyy-MM-dd HH:mm")),
+                        " | Disabled: ", iff(isnull(Disabled), "No", format_datetime(Disabled, "yyyy-MM-dd HH:mm"))),
+        UserAgent = "", EventCount = tolong(1)),
 // ---------- 🚩 Security Alerts for User ----------
 (SecurityAlert
     | where TimeGenerated {TimeRange}
