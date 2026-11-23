@@ -31,8 +31,12 @@ A Microsoft Sentinel workbook that tracks LLM API usage and AI-driven attack act
 | 19 | 🪪 App & Service Principal Abuse | Grid | Apps assigning themselves roles, adding their own credentials, or having secrets guessed |
 | 20 | ⏱️ Fixed-Rhythm Password Spray | Grid | Sprays sent at a steady machine rhythm, scored by how regular the gaps are |
 | 21 | 📞 Callbacks to Webhook, OAST & Tunnel Services | Grid | Hosts reaching interactsh, webhook bins, DNS loggers, ngrok or Cloudflare tunnels |
+| 22 | 🌀 Rotating Proxy Probing | Grid | One site probed by 50+ addresses with only a few requests each |
+| 23 | 🔁 Callbacks to Probing Addresses | Grid | Devices connecting out to an IP that was probing your web apps |
+| 24 | 🎫 Kerberos Enumeration & Logon Fan-Out | Grid | kerbrute enumeration or spraying, and network logons to many hosts from one IP |
+| 25 | 🧠 AI Agent CLI Running Attack Tools | Grid | Scanners and exploit tools started by Claude Code, Codex, Qwen Code, Kimi or opencode |
 
-Panels 7 to 9 and 11 to 13 cover agents running on the attacker's own infrastructure. Their LLM calls never touch your network, so you detect them by the speed and volume of what reaches you.
+Panels 7 to 9, 11 to 13, 22 and 23 cover agents running on the attacker's own infrastructure. Their LLM calls never touch your network, so you detect them by the speed and volume of what reaches you.
 
 ---
 
@@ -47,7 +51,11 @@ let LLMDomains = dynamic([
     "generativelanguage.googleapis.com", "aiplatform.googleapis.com",
     "api.mistral.ai", "api.groq.com", "openrouter.ai", "api.together.xyz",
     "api.deepseek.com", "api.x.ai", "api.cohere.com", "api.cohere.ai",
-    "api.perplexity.ai", "bedrock-runtime"]);
+    "api.perplexity.ai", "bedrock-runtime",
+    "dashscope.aliyuncs.com", "dashscope-intl.aliyuncs.com", "api.moonshot.cn", "api.moonshot.ai",
+    "api.kimi.com", "open.bigmodel.cn", "api.z.ai", "api.siliconflow.cn", "api.siliconflow.com",
+    "api.minimax.io", "api.minimaxi.com", "ark.cn-beijing.volces.com", "api.stepfun.com",
+    "qianfan.baidubce.com", "api.novita.ai"]);
 let SanctionedProcs = dynamic([
     "msedge.exe", "chrome.exe", "firefox.exe", "brave.exe", "msedgewebview2.exe",
     "claude.exe", "chatgpt.exe", "code.exe", "ms-teams.exe", "teams.exe"]);
@@ -97,7 +105,11 @@ let LLMDomains = dynamic([
     "generativelanguage.googleapis.com", "aiplatform.googleapis.com",
     "api.mistral.ai", "api.groq.com", "openrouter.ai", "api.together.xyz",
     "api.deepseek.com", "api.x.ai", "api.cohere.com", "api.cohere.ai",
-    "api.perplexity.ai", "bedrock-runtime"]);
+    "api.perplexity.ai", "bedrock-runtime",
+    "dashscope.aliyuncs.com", "dashscope-intl.aliyuncs.com", "api.moonshot.cn", "api.moonshot.ai",
+    "api.kimi.com", "open.bigmodel.cn", "api.z.ai", "api.siliconflow.cn", "api.siliconflow.com",
+    "api.minimax.io", "api.minimaxi.com", "ark.cn-beijing.volces.com", "api.stepfun.com",
+    "qianfan.baidubce.com", "api.novita.ai"]);
 DeviceNetworkEvents
 | where TimeGenerated {TimeRange}
 | where isempty(TargetDevice) or DeviceName has TargetDevice
@@ -136,7 +148,11 @@ let LLMDomains = dynamic([
     "generativelanguage.googleapis.com", "aiplatform.googleapis.com",
     "api.mistral.ai", "api.groq.com", "openrouter.ai", "api.together.xyz",
     "api.deepseek.com", "api.x.ai", "api.cohere.com", "api.cohere.ai",
-    "api.perplexity.ai", "bedrock-runtime"]);
+    "api.perplexity.ai", "bedrock-runtime",
+    "dashscope.aliyuncs.com", "dashscope-intl.aliyuncs.com", "api.moonshot.cn", "api.moonshot.ai",
+    "api.kimi.com", "open.bigmodel.cn", "api.z.ai", "api.siliconflow.cn", "api.siliconflow.com",
+    "api.minimax.io", "api.minimaxi.com", "ark.cn-beijing.volces.com", "api.stepfun.com",
+    "qianfan.baidubce.com", "api.novita.ai"]);
 let SanctionedProcs = dynamic([
     "msedge.exe", "chrome.exe", "firefox.exe", "brave.exe", "msedgewebview2.exe",
     "claude.exe", "chatgpt.exe", "code.exe", "ms-teams.exe", "teams.exe"]);
@@ -179,7 +195,11 @@ let LLMDomains = dynamic([
     "generativelanguage.googleapis.com", "aiplatform.googleapis.com",
     "api.mistral.ai", "api.groq.com", "openrouter.ai", "api.together.xyz",
     "api.deepseek.com", "api.x.ai", "api.cohere.com", "api.cohere.ai",
-    "api.perplexity.ai", "bedrock-runtime"]);
+    "api.perplexity.ai", "bedrock-runtime",
+    "dashscope.aliyuncs.com", "dashscope-intl.aliyuncs.com", "api.moonshot.cn", "api.moonshot.ai",
+    "api.kimi.com", "open.bigmodel.cn", "api.z.ai", "api.siliconflow.cn", "api.siliconflow.com",
+    "api.minimax.io", "api.minimaxi.com", "ark.cn-beijing.volces.com", "api.stepfun.com",
+    "qianfan.baidubce.com", "api.novita.ai"]);
 let SanctionedProcs = dynamic([
     "msedge.exe", "chrome.exe", "firefox.exe", "brave.exe", "msedgewebview2.exe",
     "claude.exe", "chatgpt.exe", "code.exe", "ms-teams.exe", "teams.exe"]);
@@ -263,10 +283,11 @@ Installs of AI agent frameworks and offensive AI tools through pip, npm, git, do
 ```kql
 let TargetDevice = trim(" ", "{DeviceName}");
 let OffensiveAI = dynamic([
-    "artex", "pentestgpt", "pentagi", "hackingbuddygpt", "hexstrike", "villager"]);
+    "artex", "antifox", "scopeweaver", "pentestgpt", "pentagi", "hackingbuddygpt", "hexstrike", "villager",
+    "cyberstrikeai", "strix-agent", "usestrix", "cairn-worker"]);
 let AgentFrameworks = dynamic([
     "langchain", "langgraph", "autogen", "crewai", "open-interpreter",
-    "browser-use", "litellm", "anthropic", "openai", "ollama"]);
+    "browser-use", "litellm", "anthropic", "openai", "ollama", "agent-zero", "agent0ai"]);
 let InstallVerbs = dynamic([
     "pip install", "pip3 install", "uv add", "uv pip", "npm install", "npm i ",
     "git clone", "docker pull", "docker run", "go install", "go get"]);
@@ -788,12 +809,13 @@ Docker or Podman pulling or running offensive images: recon toolkits, C2 framewo
 ```kql
 let TargetDevice = trim(" ", "{DeviceName}");
 let ContainerCli = dynamic(["docker", "docker.exe", "podman", "podman.exe", "nerdctl", "docker-compose", "docker-compose.exe"]);
-let AgentImages = @"artex|scopeweaver|scopesentry|pentestgpt|hexstrike";
+let AgentImages = @"artex|antifox|scopeweaver|scopesentry|pentestgpt|hexstrike|cairn-worker|vxcontrol/(pentagi|kali-linux)|strix-sandbox|cyberstrike";
 let C2Images = @"sliver|bcsecurity|mythic|havoc|covenant|metasploit";
 let ReconImages = @"kalilinux/kali|kali-rolling|parrotsec/|blackarchlinux|projectdiscovery/|instrumentisto/nmap|sqlmapproject|frapsoft/nikto|trickest/|zaproxy";
 let LLMDomains = dynamic([
     "api.anthropic.com", "api.openai.com", "openai.azure.com", "generativelanguage.googleapis.com",
-    "api.mistral.ai", "api.groq.com", "openrouter.ai", "api.deepseek.com", "api.x.ai"]);
+    "api.mistral.ai", "api.groq.com", "openrouter.ai", "api.deepseek.com", "api.x.ai",
+    "dashscope.aliyuncs.com", "api.moonshot.cn", "open.bigmodel.cn", "api.z.ai", "api.siliconflow.cn"]);
 let SanctionedProcs = dynamic(["msedge.exe", "chrome.exe", "firefox.exe", "claude.exe", "chatgpt.exe", "code.exe"]);
 let LLMHosts = DeviceNetworkEvents
     | where TimeGenerated {TimeRange}
@@ -827,7 +849,7 @@ DeviceProcessEvents
 
 **Visualization:** Grid
 
-Known ARTEX markers across web, sign-in and endpoint data: user agents that name ARTEX or its forks, probe paths and markers, host artifacts, file hashes, backdoored container images and toolkit domains. Indicators come from the [ThreatDefence ARTEX detections](https://github.com/ThreatDefence/artex-detections) project. Host artifacts, hashes and domains rank Critical, because they mean the activity reached a host.
+Known ARTEX markers across web, sign-in and endpoint data: user agents that name ARTEX or its forks, probe paths and markers, host artifacts, file hashes, backdoored container images and toolkit domains. Indicators come from the [ThreatDefence agentic attack detections](https://github.com/ThreatDefence/agentic-attack-detections) project. Host artifacts, hashes and domains rank Critical, because they mean the activity reached a host.
 
 ```kql
 let TargetDevice = trim(" ", "{DeviceName}");
@@ -1029,7 +1051,7 @@ Hosts reaching out-of-band testing services (webhook bins, interactsh and Burp C
 ```kql
 let TargetDevice = trim(" ", "{DeviceName}");
 let Oast = dynamic(["interact.sh", "oast.fun", "oast.live", "oast.me", "oast.online", "oast.pro", "oast.site",
-    "oastify.com", "burpcollaborator.net", "dnslog.cn", "ceye.io"]);
+    "oastify.com", "burpcollaborator.net", "dnslog.cn", "ceye.io", "requestrepo.com"]);
 let Webhooks = dynamic(["webhook.site", "requestbin.net", "pipedream.net"]);
 let Tunnels = dynamic(["ngrok.io", "ngrok-free.app", "ngrok.app", "trycloudflare.com", "serveo.net",
     "localhost.run", "loca.lt", "bore.pub"]);
@@ -1067,11 +1089,203 @@ union isfuzzy=true
 
 ---
 
+## 🌀 22. Rotating Proxy Probing
+
+**Visualization:** Grid  ·  **Requires:** IIS logs in `W3CIISLog` or Application Gateway access logs
+
+One site probed by 50 or more addresses in 40 minutes, each sending only a few requests. AI agents route through residential proxy pools, so per-IP burst panels (7 to 9) miss them. This panel counts distinct addresses per site instead.
+
+```kql
+let TargetDevice = trim(" ", "{DeviceName}");
+let MinSources = 50;       // distinct addresses sending attack-looking requests to one site in 40 minutes
+let MaxPerSource = 10;     // median requests per address (low = rotating proxies)
+let Allowlist = dynamic([]);   // approved scanners, monitoring, CDN and load balancer IPs
+let Attack = @"(?i)(union(\s|\+|%20)+select|sleep\(|extractvalue|\.\./|%2e%2e|/etc/passwd|<script|%3cscript|\$\{|\{\{|/\.git/|/\.env|wp-config|phpinfo|/(login|signin|admin|wp-admin|wp-login|api/auth|user/login|upload))";
+union isfuzzy=true
+    (W3CIISLog
+        | where TimeGenerated {TimeRange}
+        | project TimeGenerated, Src = cIP, Site = Computer, Url = strcat(csUriStem, "?", csUriQuery), UA = csUserAgent),
+    (AzureDiagnostics
+        | where TimeGenerated {TimeRange}
+        | where Category == "ApplicationGatewayAccessLog"
+        | project TimeGenerated, Src = clientIP_s, Site = host_s, Url = requestUri_s, UA = userAgent_s)
+| where isempty(TargetDevice) or Site has TargetDevice
+| where isnotempty(Src) and not(coalesce(ipv4_is_private(Src), false)) and Src !in (Allowlist)
+| extend IsAttack = Url matches regex Attack
+| summarize PerSource = count(), AttackReqs = countif(IsAttack), UA = take_any(UA), AttackUrl = take_anyif(Url, IsAttack)
+         by Site, Window = bin(TimeGenerated, 40m), Src
+| summarize Sources = dcount(Src),
+            AttackSources = dcountif(Src, AttackReqs > 0),
+            Requests = sum(PerSource),
+            AttackRequests = sum(AttackReqs),
+            MedianPerSource = percentile(PerSource, 50),
+            UserAgents = dcount(UA),
+            SampleUAs = make_set(UA, 10),
+            SampleURLs = make_set_if(AttackUrl, isnotempty(AttackUrl), 10)
+         by Site, Window
+| where AttackSources >= MinSources and MedianPerSource <= MaxPerSource
+| extend SevRank = iff(AttackSources >= 2 * MinSources, 2, 3)
+| extend Severity = iff(SevRank == 2, "🟠 High", "🟡 Medium")
+| sort by SevRank asc, AttackSources desc
+| project Window, Severity, Site, AttackSources, Sources, AttackRequests, Requests, MedianPerSource, UserAgents, SampleUAs, SampleURLs
+```
+
+---
+
+## 🔁 23. Callbacks to Probing Addresses
+
+**Visualization:** Grid  ·  **Requires:** IIS logs in `W3CIISLog` or Application Gateway access logs
+
+A device connecting out to an internet address that was probing your web apps. Agentic frameworks catch reverse shells and callbacks on the same machine that runs the attack, so this usually means a payload ran. Callbacks to PentAGI's listener ports (TCP 28000 to 29999) rank Critical.
+
+```kql
+let TargetDevice = trim(" ", "{DeviceName}");
+let Allowlist = dynamic([]);   // vulnerability scanners, monitoring, CDN and load balancer IPs
+let Attack = @"(?i)(union(\s|\+|%20)+select|sleep\(|extractvalue|\.\./|%2e%2e|/etc/passwd|<script|%3cscript|\$\{|\{\{|/\.git|/\.env|/\.aws/|wp-config|phpinfo|web\.config|appsettings|\.(bak|sql|old|zip)$)";
+let Probers = union isfuzzy=true
+    (W3CIISLog
+        | where TimeGenerated {TimeRange}
+        | project TimeGenerated, Prober = cIP, Url = strcat(csUriStem, "?", csUriQuery), Status = tostring(scStatus)),
+    (AzureDiagnostics
+        | where TimeGenerated {TimeRange}
+        | where Category == "ApplicationGatewayAccessLog"
+        | project TimeGenerated, Prober = clientIP_s, Url = requestUri_s, Status = tostring(httpStatus_d))
+    | where isnotempty(Prober) and not(coalesce(ipv4_is_private(Prober), false)) and Prober !in (Allowlist)
+    | summarize ProbeRequests = count(), AttackRequests = countif(Url matches regex Attack),
+                Errors = countif(Status startswith "4"), FirstProbe = min(TimeGenerated)
+             by Prober
+    | where AttackRequests > 0 or Errors >= 50;
+DeviceNetworkEvents
+| where TimeGenerated {TimeRange}
+| where isempty(TargetDevice) or DeviceName has TargetDevice
+| where ActionType in ("ConnectionSuccess", "ConnectionRequest", "ConnectionAttempt")   // Linux logs outbound as ConnectionRequest
+| where RemoteIPType == "Public"
+| join kind=inner Probers on $left.RemoteIP == $right.Prober
+| where TimeGenerated >= FirstProbe
+| summarize Connections = count(),
+            Ports = make_set(RemotePort, 10),
+            PentagiPortHits = countif(RemotePort between (28000 .. 29999)),
+            Processes = make_set(InitiatingProcessFileName, 10),
+            Commands = make_set(InitiatingProcessCommandLine, 5),
+            FirstCallback = min(TimeGenerated)
+         by DeviceName, RemoteIP, ProbeRequests, AttackRequests, FirstProbe
+| extend MinutesToCallback = datetime_diff("minute", FirstCallback, FirstProbe)
+| extend SevRank = iff(PentagiPortHits > 0, 1, 2)
+| extend Severity = iff(SevRank == 1, "🔴 Critical", "🟠 High")
+| extend Signal = iff(SevRank == 1, "🎯 PentAGI Listener Port", "🔁 Callback to Prober")
+| sort by SevRank asc, FirstCallback desc
+| project FirstCallback, Severity, Signal, DeviceName, RemoteIP, MinutesToCallback, Connections, Ports, Processes, Commands,
+          ProbeRequests, AttackRequests, FirstProbe
+```
+
+---
+
+## 🎫 24. Kerberos Enumeration & Logon Fan-Out
+
+**Visualization:** Grid  ·  **Requires:** Windows Security events in `SecurityEvent` (Common or All Events)
+
+Kerberos requests for many accounts from one address in 10 minutes, mostly unknown users (`0x6`, kerbrute enumeration) or wrong passwords (`0x18`, spraying), and network logons from one address to many hosts (NetExec, Impacket or WinRM fan-out). An address doing both ranks Critical.
+
+```kql
+let TargetDevice = trim(" ", "{DeviceName}");
+let Allowlist = dynamic([]);   // management, backup, monitoring and vulnerability-scanner hosts
+let MinAccounts = 25;
+let MinHosts = 10;
+let Kerberos = SecurityEvent
+    | where TimeGenerated {TimeRange}
+    | where EventID in (4768, 4771)
+    | extend Src = trim_start(@"::ffff:", IpAddress), Code = tostring(Status)
+    | where isnotempty(Src) and Src !in ("-", "::1", "127.0.0.1") and Src !in (Allowlist)
+    | summarize Events = count(), Targets = dcount(TargetUserName),
+                UnknownUsers = countif(EventID == 4768 and Code =~ "0x6"),
+                BadPasswords = countif(EventID == 4771 and Code =~ "0x18"),
+                Sample = make_set(TargetUserName, 15), FirstSeen = min(TimeGenerated)
+             by Src, bin(TimeGenerated, 10m)
+    | where Targets >= MinAccounts and (UnknownUsers >= 10 or BadPasswords >= 10)
+    | extend Signal = iff(BadPasswords > UnknownUsers, "🔑 Kerberos Spray", "👥 Kerberos User Enumeration");
+let FanOut = SecurityEvent
+    | where TimeGenerated {TimeRange}
+    | where EventID == 4624 and LogonType == 3 and AuthenticationPackageName in ("NTLM", "Kerberos")
+    | where isempty(TargetDevice) or Computer has TargetDevice
+    | extend Src = trim_start(@"::ffff:", IpAddress)
+    | where isnotempty(Src) and Src !in ("-", "::1", "127.0.0.1") and Src !in (Allowlist)
+    | summarize Events = count(), Targets = dcount(Computer), Sample = make_set(Computer, 15), FirstSeen = min(TimeGenerated)
+             by Src, bin(TimeGenerated, 10m)
+    | where Targets >= MinHosts
+    | extend Signal = "🕸️ Logon Fan-Out";
+let Hits = union Kerberos, FanOut;
+let Both = Hits
+    | summarize Kinds = dcount(iff(Signal has "Kerberos", "kerberos", "fanout")) by Src
+    | where Kinds == 2
+    | project Src;
+Hits
+| extend SevRank = iff(Src in (Both), 1, 2)
+| extend Severity = iff(SevRank == 1, "🔴 Critical", "🟠 High")
+| sort by SevRank asc, FirstSeen desc
+| project FirstSeen, Severity, Signal, SourceIP = Src, Events, Targets, Sample
+```
+
+---
+
+## 🧠 25. AI Agent CLI Running Attack Tools
+
+**Visualization:** Grid
+
+Scanners, Kerberos and SMB attack tools and exploit kits started by an AI agent CLI: Claude Code (through its `shell-snapshots` shell), Codex, Qwen Code, Kimi CLI, opencode or Hermes. The agent is found from the process tree or from its own command line, so it works even when LLM traffic isn't visible. Agents running with an auto-approve flag rank Critical.
+
+```kql
+let TargetDevice = trim(" ", "{DeviceName}");
+let AttackTools = dynamic(["nmap", "naabu", "masscan", "nuclei", "katana", "dalfox", "ffuf", "gobuster", "feroxbuster",
+    "dirsearch", "nikto", "sqlmap", "wpscan", "hydra", "medusa", "kerbrute", "netexec", "nxc", "crackmapexec",
+    "bloodyad", "coercer", "enum4linux-ng", "chisel", "pwncat", "pwncat-cs", "evil-winrm", "responder",
+    "cloudfox", "msfconsole", "searchsploit", "hashcat"]);
+let AgentBinaries = dynamic(["claude", "codex", "qwen", "kimi", "opencode", "hermes"]);
+let AgentCmdLine = @'(?i)(@anthropic-ai[/\\]claude-code|@qwen-code[/\\]|@openai[/\\]codex|kimi[-_]cli|opencode-ai|(^"?|[/\\])(claude|codex|qwen|kimi|opencode)(\.exe|\.cmd|\.js)?"?(\s|$))';
+let AutoApprove = @"(--dangerously-skip-permissions|--dangerously-bypass-approvals-and-sandbox|\s--yolo\b|\s--auto-approve\b|--approval-mode[\s=]+yolo)";
+let Tools = DeviceProcessEvents
+    | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
+    | extend Tool = replace_string(tolower(FileName), ".exe", "")
+    | where Tool in (AttackTools) or ProcessCommandLine has_any ("impacket-", "ysoserial", "jwt_tool");
+let ByTree = Tools
+    | extend Via = case(
+        InitiatingProcessCommandLine has "shell-snapshots" or InitiatingProcessCommandLine has "CLAUDE_CODE_SHELL_LAUNCHER_SCRIPT", "Claude Code shell",
+        replace_string(tolower(InitiatingProcessFileName), ".exe", "") in (AgentBinaries), strcat(InitiatingProcessFileName, " (parent)"),
+        replace_string(tolower(InitiatingProcessParentFileName), ".exe", "") in (AgentBinaries), strcat(InitiatingProcessParentFileName, " (grandparent)"),
+        "")
+    | where isnotempty(Via)
+    | extend AgentCmd = InitiatingProcessCommandLine;
+let Agents = DeviceProcessEvents
+    | where TimeGenerated {TimeRange}
+    | where ProcessCommandLine matches regex AgentCmdLine
+    | project DeviceId, AgentPid = ProcessId, AgentTime = TimeGenerated, AgentCmd = ProcessCommandLine;
+let ByAgentProcess = Tools
+    | join kind=inner Agents on DeviceId
+    | where TimeGenerated between (AgentTime .. (AgentTime + 7d))
+    | where InitiatingProcessParentId == AgentPid or InitiatingProcessId == AgentPid
+    | extend Via = "Agent command line";
+union ByTree, ByAgentProcess
+| summarize Tools = make_set(FileName, 20),
+            Commands = make_set(substring(ProcessCommandLine, 0, 200), 15),
+            Via = make_set(Via, 5),
+            AgentCmds = make_set(substring(AgentCmd, 0, 300), 5),
+            FirstSeen = min(TimeGenerated),
+            LastSeen = max(TimeGenerated)
+         by DeviceName, AccountName
+| extend AutoApproveFlag = tostring(AgentCmds) matches regex AutoApprove
+| extend SevRank = case(AutoApproveFlag, 1, array_length(Tools) >= 3, 2, 3)
+| extend Severity = case(SevRank == 1, "🔴 Critical", SevRank == 2, "🟠 High", "🟡 Medium")
+| sort by SevRank asc, LastSeen desc
+| project FirstSeen, Severity, DeviceName, AccountName, AutoApproveFlag, Via, Tools, Commands, AgentCmds, LastSeen
+```
+
+---
+
 ## 🔧 Enabling Web & WAF Logs
 
-Panels 9, 12, 13 and 17 and the Sensitive Files Served tile stay empty until these logs reach the workspace.
+Panels 9, 12, 13, 17, 22 and 23 and the Sensitive Files Served tile stay empty until these logs reach the workspace.
 
-**🌐 IIS logs (panels 12, 13 and 17)**
+**🌐 IIS logs (panels 12, 13, 17, 22 and 23)**
 1. Make sure the web server VM has the Azure Monitor Agent.
 2. In Azure Monitor, create a **Data Collection Rule**, add the VM as a resource, and add an **IIS Logs** data source.
 3. Send it to your Sentinel workspace. Logs appear in `W3CIISLog` within about 15 minutes.
@@ -1093,7 +1307,7 @@ Panels 9, 12, 13 and 17 and the Sensitive Files Served tile stay empty until the
 - **Developers:** Panel 6 at Low severity is visibility, not an alert. Developers installing `openai` or `langchain` is normal.
 - **Discovery noise:** Login scripts, inventory tools and admin automation can run discovery commands quickly. Add their parent process to `ExcludedParents` in panel 10 rather than raising `MinDistinct`, so real agent bursts still fire.
 - **Corporate IPs:** Add corporate egress IPs and VPN gateways to `Allowlist` in panel 11. Real users' typos and successful sign-ins from a shared IP would otherwise look like a spray that succeeded.
-- **Detection rules:** Panels 4, 5 and 7 to 13 aggregate, so they work as scheduled Sentinel analytic rules. Panels 14 to 16 and 18 return one row per event, so they also work as Defender custom detections. Matching rules for panels 4, 12 to 19 and 21 are in the AI Agent & ARTEX Detection Rules README.
+- **Detection rules:** Panels 4, 5 and 7 to 13 aggregate, so they work as scheduled Sentinel analytic rules. Panels 14 to 16 and 18 return one row per event, so they also work as Defender custom detections. Matching rules for panels 4, 12 to 19, 21, 23 and 24 are in the AI Agent & ARTEX Detection Rules README.
 - **Burst thresholds:** Each of panels 7 to 9 has its thresholds in `let` statements at the top (`MinPorts`, `MinFailures`, `MinRequests` and so on). Start with the defaults, then raise them if normal traffic shows up.
 - **Allowlists:** Add vulnerability scanners, monitoring tools, load balancers and health probes to `Allowlist` in panels 7 to 9, or they'll show as bursts.
 - **Blocked inbound connections:** Panel 7 uses `FirewallInboundConnectionBlocked`, which needs Windows Firewall auditing for dropped packets turned on. Without it, the panel only sees accepted connections.
@@ -1105,8 +1319,13 @@ Panels 9, 12, 13 and 17 and the Sensitive Files Served tile stay empty until the
 - **MCP configs:** AI apps rewrite their own config when users add servers through the app, so those rows rank Low. A config written by a shell or script is the one to investigate. Open the file and check every server's `command` and `args`.
 - **Key harvesting:** Developers set API keys in environment variables all the time, so panel 15 only matches key names when a search tool runs, not when a key is exported. Add approved secret-scanning pipelines to `ExcludedAccounts`.
 - **Offensive containers:** Pentest and red team hosts will show here. Exclude them by hostname or device tag. The image lists are regex patterns, so add new tool names as they appear.
-- **ARTEX indicators:** Panel 17 uses indicators from the [ThreatDefence ARTEX detections](https://github.com/ThreatDefence/artex-detections) project. They change as ARTEX and its forks change, so refresh the lists from that project now and then. Medium-confidence user agents (norma, HexStrike) are shared with other agent tools and rank Medium.
+- **ARTEX indicators:** Panel 17 uses indicators from the [ThreatDefence agentic attack detections](https://github.com/ThreatDefence/agentic-attack-detections) project. They change as ARTEX and its forks change, so refresh the lists from that project now and then. Medium-confidence user agents (norma, HexStrike) are shared with other agent tools and rank Medium.
 - **Web and database shells:** Java apps such as Jenkins start shells as part of normal work, so Java parents rank Medium. Add known-good command fragments to `ExcludedCmds`.
 - **App abuse:** Panel 19 needs Entra audit logs and service principal sign-in logs in the workspace. Users adding app credentials rank Low; they're normal admin work, but useful context during an investigation.
 - **Password rhythm:** Panel 20 scores each IP per hour. A low `Rhythm` with many users is a script; a high one is usually users mistyping passwords behind a shared NAT.
 - **Callbacks:** Panel 21 marks servers using `DeviceInfo`. On Linux without network protection, `RemoteUrl` is often empty, so only the tunnel-process half catches Linux hosts.
+- **Rotating proxies:** Panel 22 needs real client IPs. Behind a CDN or load balancer every request comes from a few addresses, so log `X-Forwarded-For` or use Application Gateway logs. Busy public sites may need a higher `MinSources`.
+- **Callbacks to probers:** Panel 23 only counts an address as a prober if it sent an attack-looking request or 50 errors. Add CDN, load balancer and uptime-monitor IPs to `Allowlist`.
+- **Kerberos and fan-out:** Panel 24 needs Security events from domain controllers (4768, 4771) and servers (4624). SCCM, backup and scanner hosts log on to many machines; add them to `Allowlist`.
+- **Agent CLIs:** Panel 25 shows staff using Claude Code or Codex for authorized testing. The Critical rank is for agents running with auto-approve flags such as `--dangerously-skip-permissions` or `--yolo`.
+- **Model APIs:** The LLM domain lists include the Chinese model APIs and gateways these frameworks use (DashScope, Moonshot/Kimi, Zhipu, SiliconFlow, MiniMax, Volcano Engine, StepFun, Baidu Qianfan, Novita). Remove any your organization sanctions.

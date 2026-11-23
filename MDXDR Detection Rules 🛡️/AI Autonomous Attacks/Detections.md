@@ -1,6 +1,6 @@
 # 🚨 AI Agent & ARTEX Detection Rules
 
-Thirteen detection rules for autonomous AI attack agents like ARTEX, its forks (ScopeWeaver, AntiFox, Guanlan SEC and others) and the steps their operators take. Six run as Microsoft Sentinel scheduled analytic rules and seven as Defender custom detections. They pair with the **AI & Autonomous Threats** workbook.
+Seventeen detection rules for autonomous AI attack agents like ARTEX, its forks (ScopeWeaver, AntiFox, Guanlan SEC and others), other agentic frameworks (Cairn, CyberStrikeAI, PentAGI, Hermes, HexStrike, Strix) and the steps their operators take. Nine run as Microsoft Sentinel scheduled analytic rules and eight as Defender custom detections. They pair with the **AI & Autonomous Threats** workbook.
 
 | # | Rule | Platform | Severity | Catches |
 |---|------|----------|----------|---------|
@@ -17,6 +17,10 @@ Thirteen detection rules for autonomous AI attack agents like ARTEX, its forks (
 | 11 | 📞 Server Callback to OAST or Tunnel Service | Defender | Medium | A server reaching interactsh, webhook bins, DNS loggers, ngrok or Cloudflare tunnels |
 | 12 | 🖥️ ARTEX Console Listening | Defender | High | A process listening on ARTEX console ports, or the backdoored console binary |
 | 13 | 📦 ARTEX Install or Setup | Defender | High | Cloning, installing or bringing up ARTEX or a renamed fork |
+| 14 | 🔁 Server Calls Back to Its Prober | Sentinel | High | A server connecting out to the IP that was probing your web apps |
+| 15 | 🎫 Kerberos Enumeration or Logon Fan-Out | Sentinel | High / Medium | kerbrute enumeration or spraying, and network logons to many hosts from one IP |
+| 16 | 🌐 AI Framework IOC Hit | Sentinel | High / Medium | IPs, domains, hashes and user agents for seven agentic attack frameworks |
+| 17 | 🧠 AI Agent CLI Running Attack Tools | Defender | Medium | Scanners and exploit tools started by Claude Code, Codex, Qwen Code, Kimi or opencode |
 
 ---
 
@@ -33,7 +37,11 @@ let LLMDomains = dynamic([
     "generativelanguage.googleapis.com", "aiplatform.googleapis.com",
     "api.mistral.ai", "api.groq.com", "openrouter.ai", "api.together.xyz",
     "api.deepseek.com", "api.x.ai", "api.cohere.com", "api.cohere.ai",
-    "api.perplexity.ai", "bedrock-runtime"]);
+    "api.perplexity.ai", "bedrock-runtime",
+    "dashscope.aliyuncs.com", "dashscope-intl.aliyuncs.com", "api.moonshot.cn", "api.moonshot.ai",
+    "api.kimi.com", "open.bigmodel.cn", "api.z.ai", "api.siliconflow.cn", "api.siliconflow.com",
+    "api.minimax.io", "api.minimaxi.com", "ark.cn-beijing.volces.com", "api.stepfun.com",
+    "qianfan.baidubce.com", "api.novita.ai"]);
 let SanctionedProcs = dynamic([
     "msedge.exe", "chrome.exe", "firefox.exe", "brave.exe", "msedgewebview2.exe",
     "claude.exe", "chatgpt.exe", "code.exe", "ms-teams.exe", "teams.exe"]);
@@ -447,11 +455,11 @@ DeviceProcessEvents
 
 ## 9. 🐳 Offensive AI or C2 Container
 
-From panel 16. Docker or Podman pulling or running an offensive AI agent (ARTEX, ScopeWeaver and similar) or a C2 framework (Sliver, Empire, Mythic, Havoc, Covenant, Metasploit).
+From panel 16. Docker or Podman pulling or running an offensive AI agent (ARTEX, AntiFox, ScopeWeaver, Cairn, PentAGI, Strix and similar) or a C2 framework (Sliver, Empire, Mythic, Havoc, Covenant, Metasploit).
 
 ```kql
 let ContainerCli = dynamic(["docker", "docker.exe", "podman", "podman.exe", "nerdctl", "docker-compose", "docker-compose.exe"]);
-let OffensiveImages = @"(?i)artex|scopeweaver|scopesentry|pentestgpt|hexstrike|sliver|bcsecurity|mythic|havoc|covenant|metasploit";
+let OffensiveImages = @"(?i)artex|antifox|scopeweaver|scopesentry|pentestgpt|hexstrike|cairn-worker|vxcontrol/(pentagi|kali-linux)|strix-sandbox|cyberstrike|sliver|bcsecurity|mythic|havoc|covenant|metasploit";
 let ExcludedDevices = dynamic([]);   // approved pentest / red team hosts
 DeviceProcessEvents
 | where Timestamp > ago(1h)
@@ -522,7 +530,7 @@ A server reached an out-of-band testing service (interactsh, Burp Collaborator, 
 
 ```kql
 let Destinations = dynamic(["interact.sh", "oast.fun", "oast.live", "oast.me", "oast.online", "oast.pro", "oast.site",
-    "oastify.com", "burpcollaborator.net", "dnslog.cn", "ceye.io", "webhook.site", "requestbin.net", "pipedream.net",
+    "oastify.com", "burpcollaborator.net", "dnslog.cn", "ceye.io", "requestrepo.com", "webhook.site", "requestbin.net", "pipedream.net",
     "ngrok.io", "ngrok-free.app", "ngrok.app", "trycloudflare.com", "serveo.net", "localhost.run", "loca.lt", "bore.pub"]);
 let Servers = DeviceInfo
     | where Timestamp > ago(7d)
@@ -642,11 +650,277 @@ DeviceProcessEvents
 
 ---
 
+## 🧬 Cross-Framework Behavior Rules
+
+Rules 14 to 17 catch behaviors shared by agentic attack frameworks (ARTEX, Cairn, CyberStrikeAI, PentAGI, Hermes, HexStrike, Strix), not just one tool. Rules 14 to 16 run as Sentinel scheduled rules and rule 17 as a Defender custom detection. They're adapted from [ThreatDefence's agentic attack detections](https://github.com/ThreatDefence/agentic-attack-detections).
+
+---
+
+## 14. 🔁 Server Calls Back to Its Prober
+
+One of your servers opened a connection to the same internet address that was probing your web apps. Agentic frameworks catch reverse shells and out-of-band callbacks on the machine that runs the attack, so a callback to the prober usually means a payload ran. PentAGI's listener ports (TCP 28000 to 29999) are flagged.
+
+```kql
+let ProbeWindow = 1d;
+let Allowlist = dynamic([]);   // vulnerability scanners, monitoring, CDN and load balancer IPs
+let Attack = @"(?i)(union(\s|\+|%20)+select|sleep\(|extractvalue|\.\./|%2e%2e|/etc/passwd|<script|%3cscript|\$\{|\{\{|/\.git|/\.env|/\.aws/|wp-config|phpinfo|web\.config|appsettings|\.(bak|sql|old|zip)$)";
+let Probers = union isfuzzy=true
+    (W3CIISLog
+        | where TimeGenerated > ago(ProbeWindow)
+        | project TimeGenerated, Prober = cIP, Site = Computer, Url = strcat(csUriStem, "?", csUriQuery), Status = tostring(scStatus)),
+    (AzureDiagnostics
+        | where TimeGenerated > ago(ProbeWindow)
+        | where Category == "ApplicationGatewayAccessLog"
+        | project TimeGenerated, Prober = clientIP_s, Site = host_s, Url = requestUri_s, Status = tostring(httpStatus_d))
+    | where isnotempty(Prober) and not(coalesce(ipv4_is_private(Prober), false)) and Prober !in (Allowlist)
+    | summarize ProbeRequests = count(),
+                AttackRequests = countif(Url matches regex Attack),
+                Errors = countif(Status startswith "4"),
+                ProbedSites = make_set(Site, 5),
+                SampleURLs = make_set_if(Url, Url matches regex Attack, 10),
+                FirstProbe = min(TimeGenerated)
+             by Prober
+    | where AttackRequests > 0 or Errors >= 50;
+DeviceNetworkEvents
+| where TimeGenerated > ago(1h)
+| where ActionType in ("ConnectionSuccess", "ConnectionRequest", "ConnectionAttempt")   // Linux logs outbound as ConnectionRequest
+| where RemoteIPType == "Public"
+| join kind=inner (Probers | project Prober, FirstProbe) on $left.RemoteIP == $right.Prober
+| where TimeGenerated >= FirstProbe
+| summarize Connections = count(),
+            Ports = make_set(RemotePort, 10),
+            PentagiPortHits = countif(RemotePort between (28000 .. 29999)),
+            Processes = make_set(InitiatingProcessFileName, 10),
+            Commands = make_set(InitiatingProcessCommandLine, 5),
+            Account = take_any(InitiatingProcessAccountName),
+            FirstCallback = min(TimeGenerated)
+         by DeviceName, RemoteIP
+| lookup kind=inner Probers on $left.RemoteIP == $right.Prober
+| extend MinutesToCallback = datetime_diff("minute", FirstCallback, FirstProbe)
+| extend Note = iff(PentagiPortHits > 0, "Callback to a PentAGI listener port", "Callback to the probing address")
+| project FirstCallback, Note, DeviceName, Account, RemoteIP, MinutesToCallback, Connections, Ports, Processes, Commands,
+          ProbeRequests, AttackRequests, ProbedSites, SampleURLs, FirstProbe
+```
+
+| Setting | Value |
+|---------|-------|
+| 📛 Name | AI - Server Calls Back to Its Prober |
+| 🔴 Severity | High |
+| ⏱️ Run every / Lookup data from | 1 hour / 1 day |
+| 🎯 Alert threshold | Number of results > 0 |
+| 🧾 Event grouping | Trigger an alert for each event |
+| 🧩 Entities | Host: `HostName` = `DeviceName` · IP: `Address` = `RemoteIP` · Account: `Name` = `Account` |
+| 📋 Custom details | `Note`, `Ports`, `Processes`, `Commands`, `SampleURLs` |
+| 🏷️ Alert name format | `{{DeviceName}} called back to prober {{RemoteIP}}` |
+| 🗂️ Alert grouping | Group into one incident when **Host** or **IP** matches, within 24 hours |
+
+**🛠️ Tuning**
+
+- Needs IIS logs (`W3CIISLog`) or Application Gateway access logs. Without either, the rule returns nothing.
+- If IIS sits behind a proxy or load balancer, `cIP` is the proxy's address. Add those addresses to `Allowlist`, or log `X-Forwarded-For` and use it instead.
+- A prober must send at least one attack-looking request or 50 errors, so ordinary visitors don't count.
+
+---
+
+## 15. 🎫 Kerberos Enumeration or Logon Fan-Out
+
+From panel 24. One address sends Kerberos requests for many accounts that don't exist or have the wrong password (kerbrute user enumeration or spraying), or logs on over the network to many hosts within 10 minutes (NetExec, Impacket or WinRM fan-out). Cairn's worker image ships kerbrute and NetExec. An address doing both ranks High.
+
+```kql
+let Window = 1h;
+let Allowlist = dynamic([]);   // management, backup, monitoring and vulnerability-scanner hosts
+let MinAccounts = 25;          // distinct accounts per address in 10 minutes
+let MinHosts = 10;             // distinct hosts logged on to per address in 10 minutes
+let Kerberos = SecurityEvent
+    | where TimeGenerated > ago(Window)
+    | where EventID in (4768, 4771)
+    | extend Src = trim_start(@"::ffff:", IpAddress), Code = tostring(Status)
+    | where isnotempty(Src) and Src !in ("-", "::1", "127.0.0.1") and Src !in (Allowlist)
+    | summarize Events = count(),
+                Targets = dcount(TargetUserName),
+                UnknownUsers = countif(EventID == 4768 and Code =~ "0x6"),
+                BadPasswords = countif(EventID == 4771 and Code =~ "0x18"),
+                Sample = make_set(TargetUserName, 15),
+                FirstSeen = min(TimeGenerated),
+                LastSeen = max(TimeGenerated)
+             by Src, bin(TimeGenerated, 10m)
+    | where Targets >= MinAccounts and (UnknownUsers >= 10 or BadPasswords >= 10)
+    | extend Signal = iff(BadPasswords > UnknownUsers, "Kerberos password spray", "Kerberos user enumeration"), Account = "";
+let FanOut = SecurityEvent
+    | where TimeGenerated > ago(Window)
+    | where EventID == 4624 and LogonType == 3 and AuthenticationPackageName in ("NTLM", "Kerberos")
+    | extend Src = trim_start(@"::ffff:", IpAddress)
+    | where isnotempty(Src) and Src !in ("-", "::1", "127.0.0.1") and Src !in (Allowlist)
+    | summarize Events = count(),
+                Targets = dcount(Computer),
+                Sample = make_set(Computer, 15),
+                Account = take_any(TargetUserName),
+                FirstSeen = min(TimeGenerated),
+                LastSeen = max(TimeGenerated)
+             by Src, bin(TimeGenerated, 10m)
+    | where Targets >= MinHosts
+    | extend Signal = "Network logons to many hosts";
+let Hits = union Kerberos, FanOut
+    | project FirstSeen, Signal, Src, Account, Events, Targets, Sample, LastSeen;
+let Both = Hits
+    | summarize Kinds = dcount(iff(Signal startswith "Kerberos", "kerberos", "fanout")) by Src
+    | where Kinds == 2
+    | project Src;
+Hits
+| extend Severity = iff(Src in (Both), "High", "Medium")
+| project FirstSeen, Severity, Signal, IPAddress = Src, Account, Events, Targets, Sample, LastSeen
+```
+
+| Setting | Value |
+|---------|-------|
+| 📛 Name | AI - Kerberos Enumeration or Logon Fan-Out |
+| 🟡 Severity | Medium (overridden by the `Severity` column) |
+| ⏱️ Run every / Lookup data from | 1 hour / 1 hour |
+| 🎯 Alert threshold | Number of results > 0 |
+| 🧾 Event grouping | Trigger an alert for each event |
+| 🧩 Entities | IP: `Address` = `IPAddress` · Account: `Name` = `Account` |
+| 📋 Custom details | `Signal`, `Targets`, `Sample` |
+| 🏷️ Alert name format | `{{Signal}} from {{IPAddress}}` |
+| 🎚️ Severity column | `Severity` |
+| 🗂️ Alert grouping | Group into one incident when **IP** matches, within 24 hours |
+
+**🛠️ Tuning**
+
+- Needs Windows Security events in `SecurityEvent` from domain controllers (4768, 4771) and servers (4624), collected at the **Common** or **All Events** level.
+- SCCM, backup, monitoring and vulnerability scanners log on to many hosts. Add their IPs to `Allowlist` instead of raising `MinHosts`.
+
+---
+
+## 16. 🌐 AI Framework IOC Hit
+
+Any medium- or high-confidence indicator from ThreatDefence's combined feed (IPs, domains, file hashes and high-confidence user agents for all seven frameworks) in device, sign-in or web data. Rule 4 keeps the ARTEX-specific probe markers and host artifacts; this rule adds the other frameworks and pulls the feed live, so it stays current without edits.
+
+```kql
+let Feed = externaldata(value:string, type:string, confidence:string, context:string, actor:string,
+        source:string, source_url:string, reported:string, review_by:string, framework:string)
+    [h"https://raw.githubusercontent.com/ThreatDefence/agentic-attack-detections/main/feeds/sentinel-watchlist.csv"]
+    with (format="csv", ignoreFirstRecord=true)
+    | where confidence in ("high", "medium");
+let IPs = Feed | where type == "ipv4" | project IOC = value, Framework = framework, Confidence = confidence;
+let Domains = Feed | where type == "domain" | project IOC = tolower(value), Framework = framework, Confidence = confidence;
+let Hashes = Feed | where type == "sha256" | project IOC = tolower(value), Framework = framework, Confidence = confidence;
+let UAs = Feed | where type == "user_agent" and confidence == "high" | project value;
+let Lookback = 2h;
+union isfuzzy=true
+    (DeviceNetworkEvents
+        | where TimeGenerated > ago(Lookback) and ingestion_time() > ago(1h)
+        | join kind=inner IPs on $left.RemoteIP == $right.IOC
+        | project TimeGenerated, Source = "Device network (IP)", IOC, Framework, Confidence, IPAddress = RemoteIP,
+                  HostName = DeviceName, Account = InitiatingProcessAccountName, Detail = InitiatingProcessCommandLine),
+    (DeviceNetworkEvents
+        | where TimeGenerated > ago(Lookback) and ingestion_time() > ago(1h)
+        | where isnotempty(RemoteUrl)
+        | extend Host = extract(@"^(?:[a-z]+://)?([^/:]+)", 1, tolower(RemoteUrl))
+        | join kind=inner Domains on $left.Host == $right.IOC
+        | project TimeGenerated, Source = "Device network (domain)", IOC, Framework, Confidence, IPAddress = RemoteIP,
+                  HostName = DeviceName, Account = InitiatingProcessAccountName, Detail = InitiatingProcessCommandLine),
+    (union DeviceProcessEvents, DeviceFileEvents
+        | where TimeGenerated > ago(Lookback) and ingestion_time() > ago(1h)
+        | where isnotempty(SHA256)
+        | extend Hash = tolower(SHA256)
+        | join kind=inner Hashes on $left.Hash == $right.IOC
+        | project TimeGenerated, Source = "File hash", IOC, Framework, Confidence, IPAddress = "",
+                  HostName = DeviceName, Account = InitiatingProcessAccountName, Detail = FolderPath),
+    (union isfuzzy=true SigninLogs, AADNonInteractiveUserSignInLogs
+        | where TimeGenerated > ago(Lookback) and ingestion_time() > ago(1h)
+        | join kind=inner IPs on $left.IPAddress == $right.IOC
+        | project TimeGenerated, Source = "Entra sign-in (IP)", IOC, Framework, Confidence, IPAddress,
+                  HostName = "", Account = UserPrincipalName, Detail = strcat(AppDisplayName, " · ", ResultType)),
+    (W3CIISLog
+        | where TimeGenerated > ago(Lookback) and ingestion_time() > ago(1h)
+        | join kind=inner IPs on $left.cIP == $right.IOC
+        | project TimeGenerated, Source = "IIS (IP)", IOC, Framework, Confidence, IPAddress = cIP,
+                  HostName = Computer, Account = "", Detail = strcat(csUriStem, "?", csUriQuery)),
+    (W3CIISLog
+        | where TimeGenerated > ago(Lookback) and ingestion_time() > ago(1h)
+        | where csUserAgent has_any (UAs)
+        | project TimeGenerated, Source = "IIS (user agent)", IOC = csUserAgent, Framework = "see feed", Confidence = "high",
+                  IPAddress = cIP, HostName = Computer, Account = "", Detail = csUriStem)
+| extend SevRank = iff(Confidence == "high" or not(Source endswith "(IP)"), 1, 2)
+| summarize Hits = count(), FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated),
+            Samples = make_set(Detail, 5), SevRank = min(SevRank)
+         by Source, IOC, Framework, IPAddress, HostName, Account
+| extend Severity = iff(SevRank == 1, "High", "Medium")
+| project-away SevRank
+```
+
+| Setting | Value |
+|---------|-------|
+| 📛 Name | AI - Agentic Framework IOC Hit |
+| 🔴 Severity | High (overridden by the `Severity` column) |
+| ⏱️ Run every / Lookup data from | 1 hour / 2 hours |
+| 🎯 Alert threshold | Number of results > 0 |
+| 🧩 Entities | IP: `IPAddress` · Host: `HostName` · Account: `Account` |
+| 📋 Custom details | `Source`, `IOC`, `Framework`, `Samples` |
+| 🏷️ Alert name format | `{{Framework}} indicator in {{Source}}` |
+| 🎚️ Severity column | `Severity` |
+| 🗂️ Alert grouping | Group into one incident when **IP** or **Host** matches, within 24 hours |
+
+**🛠️ Tuning**
+
+- IP indicators are medium confidence (residential proxies and cloud hosts get reused), so IP-only hits are Medium. Domains, hashes and user agents are High.
+- `externaldata` pulls the feed on every run. If your workspace can't reach GitHub, import `feeds/sentinel-watchlist.csv` as a watchlist and replace `Feed` with `_GetWatchlist("AgenticIOCs")`.
+- Low-confidence indicators are left out on purpose. Review them in the feed if you're investigating a specific framework.
+
+---
+
+## 17. 🧠 AI Agent CLI Running Attack Tools
+
+From panel 25. A scanner, Kerberos or SMB attack tool or exploit kit started by an AI agent CLI: Claude Code (through its `shell-snapshots` shell), Codex, Qwen Code, Kimi CLI, opencode or Hermes. Rule 1 needs LLM network traffic in the same hour; this rule finds the agent from the process tree, so it still fires when `RemoteUrl` is empty.
+
+```kql
+let AttackTools = dynamic(["nmap", "naabu", "masscan", "nuclei", "katana", "dalfox", "ffuf", "gobuster", "feroxbuster",
+    "dirsearch", "nikto", "sqlmap", "wpscan", "hydra", "medusa", "kerbrute", "netexec", "nxc", "crackmapexec",
+    "bloodyad", "coercer", "enum4linux-ng", "chisel", "pwncat", "pwncat-cs", "evil-winrm", "responder",
+    "cloudfox", "msfconsole", "searchsploit", "hashcat"]);
+let AgentBinaries = dynamic(["claude", "codex", "qwen", "kimi", "opencode", "hermes"]);
+let AgentCmd = @"(?i)(@anthropic-ai[/\\]claude-code|@qwen-code[/\\]|@openai[/\\]codex|kimi[-_]cli|opencode-ai)";
+let AutoApprove = @"(--dangerously-skip-permissions|--dangerously-bypass-approvals-and-sandbox|\s--yolo\b|\s--auto-approve\b|--approval-mode[\s=]+yolo)";
+let ExcludedDevices = dynamic([]);   // approved pentest / red team hosts
+DeviceProcessEvents
+| where Timestamp > ago(1h)
+| extend Tool = replace_string(tolower(FileName), ".exe", "")
+| where Tool in (AttackTools) or ProcessCommandLine has_any ("impacket-", "ysoserial", "jwt_tool")
+| extend Parent = replace_string(tolower(InitiatingProcessFileName), ".exe", ""),
+         Grandparent = replace_string(tolower(InitiatingProcessParentFileName), ".exe", "")
+| extend Agent = case(
+    InitiatingProcessCommandLine has "shell-snapshots" or InitiatingProcessCommandLine has "CLAUDE_CODE_SHELL_LAUNCHER_SCRIPT", "Claude Code shell",
+    Parent in (AgentBinaries) or InitiatingProcessCommandLine matches regex AgentCmd, strcat(InitiatingProcessFileName, " (parent)"),
+    Grandparent in (AgentBinaries), strcat(InitiatingProcessParentFileName, " (grandparent)"),
+    "")
+| where isnotempty(Agent)
+| where DeviceName !in~ (ExcludedDevices)
+| extend AutoApproveFlag = InitiatingProcessCommandLine matches regex AutoApprove
+| project Timestamp, DeviceId, DeviceName, ReportId, AccountName, AccountUpn = InitiatingProcessAccountUpn,
+          Agent, AutoApproveFlag, FileName, ProcessCommandLine, InitiatingProcessFileName, InitiatingProcessCommandLine
+```
+
+| Setting | Value |
+|---------|-------|
+| 📛 Name | AI - Agent CLI Running Attack Tools |
+| 🟡 Severity | Medium |
+| 🏷️ Category | Execution |
+| ⏱️ Frequency | Every hour |
+| 🧩 Impacted entities | Device: `DeviceId` · User: `AccountUpn` |
+| ⚙️ Actions | None until tuned |
+
+**🛠️ Tuning**
+
+- Security staff using Claude Code or Codex for authorized testing will match. Add their hosts to `ExcludedDevices`.
+- npm-installed agents (Qwen Code, some Claude Code installs) run as `node`, so the grandparent check can miss them. Panel 25 also finds the agent by its command line and catches those.
+
+---
+
 ## 🛠️ Creating the Rules
 
-**Sentinel rules (1 to 6):** go to **Microsoft Sentinel > Analytics > Create > Scheduled query rule** (in the Defender portal: **Microsoft Sentinel > Configuration > Analytics**). Enter the name and severity from the rule's settings, paste the query, map entities, add custom details, the alert name format and (for rules 1 and 2) the severity column, set the schedule and threshold, turn on incident creation and alert grouping, then **Review + create**.
+**Sentinel rules (1 to 6 and 14 to 16):** go to **Microsoft Sentinel > Analytics > Create > Scheduled query rule** (in the Defender portal: **Microsoft Sentinel > Configuration > Analytics**). Enter the name and severity from the rule's settings, paste the query, map entities, add custom details, the alert name format and (for rules 1, 2, 15 and 16) the severity column, set the schedule and threshold, turn on incident creation and alert grouping, then **Review + create**.
 
-**Defender custom detections (7 to 13):** in the Defender portal, go to **Hunting > Advanced hunting**, run the query, and select **Create detection rule**. Enter the name, severity, category and frequency, map the impacted entities, add any actions, set the scope (exclude pentest device groups), then **Submit**. If Defender won't accept **Continuous (NRT)** for a query, choose **Every hour**.
+**Defender custom detections (7 to 13 and 17):** in the Defender portal, go to **Hunting > Advanced hunting**, run the query, and select **Create detection rule**. Enter the name, severity, category and frequency, map the impacted entities, add any actions, set the scope (exclude pentest device groups), then **Submit**. If Defender won't accept **Continuous (NRT)** for a query, choose **Every hour**.
 
 ---
 
@@ -667,5 +941,9 @@ DeviceProcessEvents
 | 📞 11 | Run `curl https://webhook.site/<any-id>`. The rule only fires on servers, so on your Windows 11 VM or Kali the hit shows in panel 21 but not as an alert. To test the alert, use a Windows Server VM or add the device to the `Servers` list. |
 | 🖥️ 12 | On Kali: `python3 -m http.server 8790`, then stop it. |
 | 📦 13 | On Kali: `mkdir -p /tmp/artex-test && echo 'echo hi' > /tmp/artex-test/install.sh && bash /tmp/artex-test/install.sh`. The command line names an `artex` folder and `install.sh`, so it matches without installing anything. Delete the folder afterwards. |
+| 🔁 14 | From Kali (public IP), request `http://<windows-vm public IP>/.env`. Then on windows-vm run `Test-NetConnection <Kali public IP> -Port 443`. The connection attempt to the prober is enough. |
+| 🎫 15 | Needs a domain controller sending Security events. From Kali: `kerbrute userenum -d <domain> --dc <DC IP> users.txt` with 30 or more made-up names. |
+| 🌐 16 | On windows-vm: `curl.exe -m 5 http://update.pentagi.com`. It's PentAGI's update-check domain, so the DNS lookup and connection match. |
+| 🧠 17 | On Kali: `mkdir -p ~/.claude/shell-snapshots && touch ~/.claude/shell-snapshots/test.sh && zsh -c 'source ~/.claude/shell-snapshots/test.sh; nmap -sn 127.0.0.1'`. That mimics how Claude Code launches commands. |
 
 Events take up to about 15 minutes to arrive. Run each query by hand first, then wait for the next scheduled run.
