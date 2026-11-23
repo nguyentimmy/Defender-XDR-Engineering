@@ -33,7 +33,7 @@ Panels are parameterized — **Hostname** + **Time Range** (plus **User** where 
          A device or user shows up repeatedly, or a hunt hit
          looks worth escalating
                         ↓
-        🔍 Incident Response Workbook (Device / User Compromise Triage)
+        🔍 Incident Response Workbook (Device / User Investigation)
 
 📊 KPI Metrics         ─  looks back at how all of the above was handled
 ```

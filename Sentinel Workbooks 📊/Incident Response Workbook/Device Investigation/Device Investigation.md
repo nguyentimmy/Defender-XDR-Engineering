@@ -1,6 +1,6 @@
-# 🛡️ Device Compromise Triage
+# 🛡️ Device Investigation
 
-**On-demand post-compromise investigation and threat hunting for a single endpoint, Windows or Linux.**
+**On-demand investigation and threat hunting for a single endpoint, Windows or Linux, from the first attempt to full compromise.**
 
 Parameterized Microsoft Sentinel / Defender XDR workbook that pulls every suspicious signal on a device into one risk-scored, severity-ranked timeline.
 
@@ -16,7 +16,7 @@ This workbook collapses all of it into a single view:
 - **One view instead of many alerts.** Rather than clicking through separate alerts and log tables, you get one chronological, risk-ranked table that is easier to read and faster to act on.
 - **Export-ready.** Results can be exported (CSV or Excel) straight from the workbook, so the timeline drops directly into an IR report or ticket.
 
-Use it when a device surfaces in an alert, appears on the endpoint dashboard, or belongs to a user under investigation.
+Use it when a device surfaces in an alert, appears on the endpoint dashboard, belongs to a user under investigation, or was targeted and you need to know whether the attack got in.
 
 > ⚠️ **Disclaimer:** This workbook does not replace alert triage. Alerts and incidents should still be investigated through the normal triage and IR process for a deeper investigation. Use it as a supplemental view to surface related activity and context that may not generate an alert on its own.
 
@@ -28,10 +28,26 @@ Every event gets a `RiskScore` (0–10) and a Severity label: 🔴 Critical / �
 
 ---
 
+## 🧭 Phases
+
+Every row also gets a **Phase**, so the same view works before, during and after a compromise:
+
+| Phase | Covers |
+| --- | --- |
+| 1️⃣ Pre-Compromise | Targeting and attempts: risky files delivered, admin ports reached from the internet, brute force, threats Defender blocked or removed |
+| 2️⃣ Initial Access | First foothold: Office or script spawns, download and execute, malicious PowerShell, LOLBin execution, logons after failures, external remote logons |
+| 3️⃣ Post-Compromise | Persistence, credential access, evasion, discovery, lateral movement, C2, exfil and impact |
+| 🚨 Alert | Defender XDR alerts on the device |
+
+Filter on **Phase** to answer "was it only targeted?" (Pre-Compromise rows only) versus "did it get in, and what happened next?".
+
+---
+
 ## 🔍 What it searches for
 
 | Category | Signals |
 | --- | --- |
+| **Targeting & Attempts** | Risky files delivered from the internet or Outlook (executables, scripts, LNK, ISO, macro documents), admin and database ports reached from the internet, brute force, threats Defender blocked |
 | **Initial Access** | Office apps and script hosts (Word, Excel, Outlook, wscript, mshta) spawning shells or LOLBins |
 | **Execution** | Malicious PowerShell (download, encoded, hidden), LOLBin proxy execution (certutil, bitsadmin, mshta, regsvr32, rundll32, msiexec), Linux download-and-execute and run-from-/tmp |
 | **Persistence** | Run keys, Winlogon, scheduled tasks, services, WMI subscriptions, Startup folder drops; Linux cron, systemd, authorized_keys, shell profiles, PAM |
@@ -49,14 +65,14 @@ Every event gets a `RiskScore` (0–10) and a Severity label: 🔴 Critical / �
 ---
 
 ## 📊 Visualization of the Dashboard
-![alt text](image.png)
+![Device Investigation dashboard](Image/image.png)
 
 ---
 
 ## 🔍 KQL
 ```kql
 // ============================================================
-// DEVICE COMPROMISE TRIAGE - Workbook (Parameterized, Risk-Scored)
+// DEVICE INVESTIGATION - Workbook (Parameterized, Risk-Scored, Phase-Tagged)
 // ============================================================
 let TargetDevice = "{DeviceName}";
 let BenignParents = dynamic([
@@ -1411,6 +1427,47 @@ union isfuzzy=true
               SHA256,
               Detail = strcat("Driver: ", substring(FolderPath, 0, 200))
 ),
+// ============================================================
+// PRE-COMPROMISE -- risky files delivered from the internet or email (T1566, T1189)
+// ============================================================
+(
+    DeviceFileEvents
+    | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
+    | where ActionType in ("FileCreated", "FileRenamed")
+    | where isnotempty(FileOriginUrl) or isnotempty(FileOriginReferrerUrl) or FolderPath has @"\Content.Outlook\"
+    | where FileName matches regex @"(?i)\.(exe|dll|scr|msi|js|jse|vbs|vbe|wsf|hta|ps1|bat|cmd|lnk|iso|img|vhdx?|zip|rar|7z|one|xll|docm|xlsm|pptm)$"
+    | project TimeGenerated, Signal = "📥 Risky File Delivered", DeviceName,
+              Account = InitiatingProcessAccountName,
+              InitiatingProcess = InitiatingProcessFileName,
+              InitiatingProcessCmd = InitiatingProcessCommandLine,
+              ChildProcess = FileName,
+              SHA256,
+              Detail = strcat("From: ", coalesce(FileOriginUrl, FileOriginReferrerUrl, "Outlook attachment"), " -> ", FolderPath)
+),
+// ============================================================
+// PRE-COMPROMISE -- admin and database ports reached from the internet (T1133, T1190)
+// ============================================================
+(
+    DeviceNetworkEvents
+    | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
+    | where ActionType == "InboundConnectionAccepted"
+    | where RemoteIPType == "Public"
+    | where LocalPort in (22, 23, 135, 139, 445, 1433, 3306, 3389, 5432, 5900, 5985, 5986)
+    | summarize Conns = count(), Sources = dcount(RemoteIP), SampleIPs = make_set(RemoteIP, 5),
+                LastSeen = max(TimeGenerated),
+                Proc = take_any(InitiatingProcessFileName), Cmd = take_any(InitiatingProcessCommandLine)
+                by DeviceName, LocalPort, Bin = bin(TimeGenerated, 1h)
+    | project TimeGenerated = LastSeen, Signal = "🚪 Inbound Exposure", DeviceName,
+              Account = "",
+              InitiatingProcess = Proc,
+              InitiatingProcessCmd = Cmd,
+              ChildProcess = "",
+              SHA256 = "",
+              Detail = strcat("Port ", LocalPort, " reached from ", Sources, " public IPs (", Conns,
+                              " connections): ", strcat_array(SampleIPs, ", "))
+),
 // --- Schema pin keeps union column order and types stable ---
 (
     datatable(TimeGenerated:datetime, Signal:string, DeviceName:string,
@@ -1438,7 +1495,7 @@ union isfuzzy=true
         and (InitiatingProcessCmd contains "-s DPS"
              or InitiatingProcessCmd contains "-s SysMain"
              or InitiatingProcessCmd contains "-s DiagTrack"))
-| where IsHardSignal or not(IsBenignParent)
+| where IsHardSignal or Signal has "Risky File Delivered" or not(IsBenignParent)
 // ============================================================
 // RISK SCORING - base weight per signal type + situational modifiers
 // ============================================================
@@ -1448,6 +1505,8 @@ union isfuzzy=true
     Signal contains "Alert (Low)", 4,
     Signal contains "Alert (Info)", 3,
     Signal has "Initial Access", 8,
+    Signal has "Inbound Exposure", 5,
+    Signal has "Risky File Delivered", 4,
     Signal has "LOLBin Execution", 7,
     Signal has "Suspicious Driver", 7,
     Signal has "Startup Persistence", 6,
@@ -1489,6 +1548,12 @@ union isfuzzy=true
     0
 )
 | extend RiskScore = min_of(BaseScore + DiscoveryBoost + iff(IsHardSignal, 2, 0), 10)
+| extend Phase = case(
+    Signal startswith "🚨 Alert", "🚨 Alert",
+    Signal matches regex "Brute Force|Risky File Delivered|Inbound Exposure"
+        or (Signal has "Defender Detection" and Action matches regex "(?i)block|quarantin|remov|prevent|clean"), "1️⃣ Pre-Compromise",
+    Signal matches regex "Initial Access|Download & Execute|Malicious PowerShell|LOLBin Execution|Logon After Failures|External Remote Logon", "2️⃣ Initial Access",
+    "3️⃣ Post-Compromise")
 | extend Severity = case(RiskScore >= 9, "🔴 Critical",
                          RiskScore >= 7, "🟠 High",
                          RiskScore >= 5, "🟡 Medium", "⚪ Low")
@@ -1514,10 +1579,10 @@ union isfuzzy=true
 | extend InitiatingProcessCmd = substring(InitiatingProcessCmd, 0, 120)
 | extend Detail = substring(Detail, 0, 150)
 | summarize LastSeen = max(TimeGenerated), Hits = count()
-    by Severity, RiskScore, Signal, ThreatName, Action, DeviceName, Account, Detail, IOCs,
+    by Severity, RiskScore, Phase, Signal, ThreatName, Action, DeviceName, Account, Detail, IOCs,
        InitiatingProcess, InitiatingProcessCmd, ChildProcess, SHA256,
        TimeBin = bin(TimeGenerated, 1m)
-| project TimeGenerated = LastSeen, Severity, RiskScore, Hits, Signal, DeviceName, Account,
+| project TimeGenerated = LastSeen, Severity, RiskScore, Phase, Hits, Signal, DeviceName, Account,
           Detail, IOCs, InitiatingProcess, InitiatingProcessCmd, ChildProcess, SHA256, ThreatName, Action
 | sort by RiskScore desc, TimeGenerated desc
 ```

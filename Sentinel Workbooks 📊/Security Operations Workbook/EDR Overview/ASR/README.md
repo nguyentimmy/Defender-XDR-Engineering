@@ -233,7 +233,7 @@ ASR
 | take 15
 ```
 
-Devices with repeated high-impact blocks are worth a run through Device Compromise Triage.
+Devices with repeated high-impact blocks are worth a run through Device Investigation.
 
 ## 🎯 Audit-Only Rules
 Grid.
