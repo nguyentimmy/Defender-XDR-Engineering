@@ -4,13 +4,14 @@ Three Microsoft Sentinel / Defender XDR workbooks. They are not alternatives to 
 
 ---
 
-## 🗺️ The three at a glance
+## 🗺️ The four at a glance
 
 | Workbook | Mode | Question it answers | Scope |
 | --- | --- | --- | --- |
 | 📊 **Security Operations** | Continuous monitoring | *Is anything wrong across the fleet?* | All devices |
 | 🔍 **Incident Response** | On-demand, parameterized | *What happened to this device or user?* | One entity |
 | 🔬 **Digital Forensics** | On-demand, narrow window | *Reconstruct exactly what occurred* | One entity, minutes to hours |
+| 📡 **[SIEM Overview](SIEM%20Overview/README.md)** | Continuous monitoring | *Is the data we detect on still arriving, on time and within budget?* | The SIEM itself |
 
 ---
 
@@ -115,6 +116,7 @@ Both approaches are correct for their stage. Carrying IR's exclusion lists into 
 | Checking whether protection is disabled anywhere | 📊 Security Operations |
 | Deciding which ASR rules to move from Audit to Block | 📊 Security Operations |
 | Suspected data theft by a user or device | 🔍 Incident Response (Data Exfil tab) |
+| A connector, agent or table went quiet, or ingestion cost jumped | 📡 SIEM Overview |
 
 ---
 
