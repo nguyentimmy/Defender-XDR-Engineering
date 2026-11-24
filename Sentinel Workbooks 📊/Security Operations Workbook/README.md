@@ -1,12 +1,12 @@
 # 📊 Security Operations Workbook — How These Fit Together
 
-Four tabs inside one Sentinel workbook. They're not alternatives to each other — together they cover the full loop of detection, prevention, hunting, and measuring how well the SOC responds.
+Five tabs inside one Sentinel workbook. They're not alternatives to each other — together they cover the full loop of detection, prevention, hunting, and measuring how well the SOC responds.
 
 > **Disclaimer:** This workbook does not replace alert triage. Alerts and incidents should still be investigated — the workbook supports deeper investigation.
 
 ---
 
-## 🗺️ The four tabs at a glance
+## 🗺️ The five tabs at a glance
 
 | Tab | Mode | Question it answers |
 | --- | --- | --- |
@@ -14,6 +14,7 @@ Four tabs inside one Sentinel workbook. They're not alternatives to each other �
 | 🛡️ **EDR Overview** (AV + ASR) | Passive, continuous | *What did Defender catch or block — did it clean up, and is the sensor even reporting?* |
 | 📊 **KPI Metrics** | Retrospective | *How fast and how accurately is the SOC responding?* |
 | 🎯 **Threat Hunting** | Active, daily | *What's happening that nothing caught yet?* |
+| 📡 **SIEM Overview** | Passive, continuous | *Is the data we detect on still arriving, on time and within budget?* |
 
 Panels are parameterized — **Hostname** + **Time Range** (plus **User** where it applies). Leave the filters empty for a fleet-wide sweep, or fill them in to scope to one device or user.
 
@@ -36,6 +37,8 @@ Panels are parameterized — **Hostname** + **Time Range** (plus **User** where 
         🔍 Incident Response Workbook (Device / User Investigation)
 
 📊 KPI Metrics         ─  looks back at how all of the above was handled
+
+📡 SIEM Overview       ─  underneath everything: is the data still arriving?
 ```
 
 ---
@@ -110,6 +113,20 @@ Unlike the other tabs, nothing here fires on its own. It's only as current as th
 
 ---
 
+## 📡 SIEM Overview
+
+**Purpose: confirm the SIEM itself is healthy, because a quiet table means quiet detections.** Full KQL: [SIEM Overview](SIEM%20Overview/README.md)
+
+- **Ingestion Summary, Daily Ingestion, Top Tables** — how much data is coming in, from where, and what it costs
+- **Ingestion Anomalies + Top Noisy Sources** — sudden spikes or drops, and which sources drive volume
+- **Last Seen per Table + Silent Sources** — tables, hosts and appliances that stopped sending
+- **Connector Health + Agent Heartbeat + Ingestion Latency** — whether collection is working and on time
+- **Rule & Automation Failures** — analytics and automation rules that failed
+
+> 💡 Check it when detections go unusually quiet, or once a day alongside Detection Overview.
+
+---
+
 ## ⚖️ Passive vs. active — why both are necessary
 
 | | Detection / EDR Overview | Threat Hunting |
@@ -137,6 +154,7 @@ Neither replaces the other. Alerts and EDR tell you protection is working; Threa
 | Deciding which ASR rules to move from Audit to Block | 🛡️ EDR Overview (Audit-Only Rules) |
 | A user is getting MFA-bombed or signed in from a bad IP | 🎯 Threat Hunting (User Hunts) |
 | Reporting on response times or analyst workload | 📊 KPI Metrics |
+| A connector, agent or table went quiet, or ingestion cost jumped | 📡 SIEM Overview |
 | Anything worth digging into | 🔍 Incident Response Workbook |
 
 ---

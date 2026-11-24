@@ -49,11 +49,10 @@ Both are needed. They solve different problems.
 
 | Workbook | Purpose | When to use |
 | --- | --- | --- |
-| **🖥️ Security Operations** | Detection Overview, EDR Overview (AV detections, EDR evasions, Defender health, ASR blocks vs audits), KPI Metrics and Threat Hunting | Daily/weekly proactive review |
+| **🖥️ Security Operations** | Detection Overview, EDR Overview (AV detections, EDR evasions, Defender health, ASR blocks vs audits), KPI Metrics, Threat Hunting and SIEM Overview (ingestion, connector and rule health) | Daily/weekly proactive review |
 | **🎯 Threat Hunting** | Daily Hunts for known attacker techniques, plus AI & Autonomous Threats for LLM misuse and machine-speed attacks | Start of shift, proactive hunting |
 | **🚨 Incident Response** | Unified, risk-scored timeline of suspicious activity per device, user or data exfil path, surfacing activity that never became an alert | Active incident, first response |
 | **🔎 Digital Forensics** | Device-scoped timelines: process lineage, file/registry/network activity, persistence inventory | Post-incident deep investigation |
-| **📡 SIEM Overview** | Ingestion volume and cost, connector and agent health, latency, silent sources, rule and automation failures | Daily health check of Sentinel itself |
 
 > ⚠️ Workbooks do not replace alert triage. Alerts and incidents should still be investigated; the workbooks support deeper investigation.
 
