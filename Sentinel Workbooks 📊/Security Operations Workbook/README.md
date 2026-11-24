@@ -67,7 +67,7 @@ Panels are parameterized — **Hostname** + **Time Range** (plus **User** where 
 
 ## 🛡️ EDR Overview
 
-**Purpose: confirm what Defender caught and blocked — and whether the sensors can be trusted.**
+**Purpose: confirm what Defender caught and blocked — and whether the sensors can be trusted.** Two groups: [AV Overview](EDR%20Overview/AV%20Overview.md) and [ASR Overview](EDR%20Overview/ASR%20Overview.md).
 
 ### 🦠 AV
 - **Antivirus Detections** — every detection risk-scored by remediation status, whether it was running, threat family, and path
@@ -88,11 +88,12 @@ Panels are parameterized — **Hostname** + **Time Range** (plus **User** where 
 
 ## 📊 KPI Metrics
 
-**Purpose: SOC optimization — measure how fast and how accurately incidents are handled.**
+**Purpose: SOC optimization — measure how fast and how accurately incidents are handled.** Full KQL: [KPI Metrics Overview](KPI%20Metrics%20Overview/KPI%20Metrics%20Overview.md)
 
 - **MTTD / MTTA / MTTR** — mean time to detect, acknowledge, and resolve, with trends and breakdowns by severity
 - **Incidents by Analyst + Status** — workload and backlog per analyst
 - **Classification + TP / BP / FP Rates** — how much alerting is real, benign, or noise
+- **Created vs. Closed + Tuning Candidates** — whether the backlog is growing, and which detections are mostly noise
 
 > 💡 A high false-positive rate on one detection is a tuning task, not just a metric — feed it back into the detection rule or the hunt's exclusions.
 
@@ -100,7 +101,7 @@ Panels are parameterized — **Hostname** + **Time Range** (plus **User** where 
 
 ## 🎯 Threat Hunting
 
-**Purpose: find what Detection Overview and EDR Overview structurally can't.**
+**Purpose: find what Detection Overview and EDR Overview structurally can't.** Full KQL: [Daily Hunts](Threat%20Hunt%20Overview/Daily%20Hunts.md) and [AI Autonomous Threats Hunts](Threat%20Hunt%20Overview/AI%20Autonomous%20Threats%20Hunts.md)
 
 Proactive, technique-level daily hunts, split by entity:
 
