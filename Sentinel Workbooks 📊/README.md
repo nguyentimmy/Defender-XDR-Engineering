@@ -1,15 +1,14 @@
 # 🛡️ Sentinel Workbook Suite — How These Fit Together
 
-Three Microsoft Sentinel / Defender XDR workbooks. They are not alternatives to each other — they're sequential stages of the same investigation, and each one hands off to the next.
+Two Microsoft Sentinel / Defender XDR workbooks. They are not alternatives to each other — they're sequential stages of the same investigation, and one hands off to the next.
 
 ---
 
-## 🗺️ The three at a glance
+## 🗺️ The two at a glance
 
 | Workbook | Mode | Question it answers | Scope |
 | --- | --- | --- | --- |
-| 📊 **Security Operations** | Continuous monitoring | *Is anything wrong across the fleet?* | All devices |
-| 🔍 **Incident Response** | On-demand, parameterized | *What happened to this device or user?* | One entity |
+| 📊 **Security Operations** | Continuous monitoring + on-demand investigation | *Is anything wrong across the fleet, and what happened to this device or user?* | All devices, or one entity in the Incident Response Dashboard |
 | 🔬 **Digital Forensics** | On-demand, narrow window | *Reconstruct exactly what occurred* | One entity, minutes to hours |
 
 ---
@@ -18,9 +17,9 @@ Three Microsoft Sentinel / Defender XDR workbooks. They are not alternatives to 
 
 ```
 📊 Security Operations Workbook
-   Fleet-wide monitoring — something surfaces
+   Fleet-wide dashboards — something surfaces
               ↓  gives you an entity
-🔍 Incident Response Workbook
+   🔍 Incident Response Dashboard (same workbook)
    Unified device, user + data exfil timeline — confirms and scopes
               ↓  gives you a device AND a timestamp
 🔬 Digital Forensics Workbook
@@ -43,15 +42,15 @@ This is the one you glance at. It watches the fleet for alerts, prevention hits,
 
 **ASR Dashboard** — ASR blocks vs. audits, hits by rule, top triggering processes and devices, and audit-only rules that are ready to switch to Block.
 
-It's the layer that tells you *where to look*. When a device shows up here repeatedly, or an AV detection comes back unremediated, that device becomes the input to the IR workbook.
+It's the layer that tells you *where to look*. When a device shows up here repeatedly, or an AV detection comes back unremediated, that device becomes the input to the Incident Response Dashboard.
 
 > 💡 Check sensor health first — devices that aren't reporting telemetry look identical to clean devices, so it determines how much you can trust every other panel.
 
 ---
 
-## 🔍 Incident Response Workbook
+## 🔍 Incident Response Dashboard
 
-**Purpose: streamline unified events across device and user compromise.**
+**Purpose: streamline unified events across device and user compromise.** It's a tab of the Security Operations Workbook.
 
 This is the core of the suite. Pick a device or an account, pick a time range, and get a single chronological timeline of post-compromise activity — no query editing, no jumping between tabs.
 
@@ -108,19 +107,19 @@ Both approaches are correct for their stage. Carrying IR's exclusion lists into 
 | Situation | Workbook |
 | --- | --- |
 | Morning check, nothing specific | 📊 Security Operations |
-| An alert fired on a device | 🔍 Incident Response |
-| A user reported a phishing email | 🔍 Incident Response (user tab) |
+| An alert fired on a device | 📊 Security Operations (Incident Response Dashboard) |
+| A user reported a phishing email | 📊 Security Operations (Incident Response Dashboard, User Investigation) |
 | IR showed credential dumping at 14:22 | 🔬 Digital Forensics, scoped 14:00–14:45 |
 | Writing the incident report timeline | 🔬 Digital Forensics |
 | Checking whether protection is disabled anywhere | 📊 Security Operations |
 | Deciding which ASR rules to move from Audit to Block | 📊 Security Operations |
-| Suspected data theft by a user or device | 🔍 Incident Response (Data Exfil tab) |
+| Suspected data theft by a user or device | 📊 Security Operations (Incident Response Dashboard, Data Exfil) |
 | A connector, agent or table went quiet, or ingestion cost jumped | 📊 Security Operations (SIEM Dashboard) |
 
 ---
 
 ## 📊 Visualization of the Dashboard
 
-Here's an example of the [Device Investigation](Incident%20Response%20Workbook/Device%20Investigation/Device%20Investigation.md) workbook in action:
+Here's an example of the [Device Investigation](Security%20Operations%20Workbook/Incident%20Response%20Dashboard/Device%20Investigation.md) dashboard in action:
 
-![Device Investigation dashboard](Incident%20Response%20Workbook/Device%20Investigation/Image/image.png)
+![Device Investigation dashboard](Security%20Operations%20Workbook/Incident%20Response%20Dashboard/Image/image.png)

@@ -1,17 +1,18 @@
 # 📊 Security Operations Workbook — How These Fit Together
 
-Five tabs inside one Sentinel workbook. They're not alternatives to each other — together they cover the full loop of detection, prevention, hunting, and measuring how well the SOC responds.
+Six tabs inside one Sentinel workbook. They're not alternatives to each other — together they cover the full loop of detection, prevention, hunting, investigation, and measuring how well the SOC responds.
 
 > **Disclaimer:** This workbook does not replace alert triage. Alerts and incidents should still be investigated — the workbook supports deeper investigation.
 
 ---
 
-## 🗺️ The five tabs at a glance
+## 🗺️ The six tabs at a glance
 
 | Tab | Mode | Question it answers |
 | --- | --- | --- |
 | 🖥️ **Detection Dashboard** | Passive, continuous | *What's alerting, how bad is it, and where?* |
 | 🛡️ **EDR Dashboard** (AV + ASR) | Passive, continuous | *What did Defender catch or block — did it clean up, and is the sensor even reporting?* |
+| 🔍 **Incident Response Dashboard** | On-demand, one entity | *What happened to this device or user, before and after compromise?* |
 | 📊 **KPI Metrics** | Retrospective | *How fast and how accurately is the SOC responding?* |
 | 🎯 **Threat Hunting** | Active, daily | *What's happening that nothing caught yet?* |
 | 📡 **SIEM Dashboard** | Passive, continuous | *Is the data we detect on still arriving, on time and within budget?* |
@@ -34,7 +35,7 @@ Panels are parameterized — **Hostname** + **Time Range** (plus **User** where 
          A device or user shows up repeatedly, or a hunt hit
          looks worth escalating
                         ↓
-        🔍 Incident Response Workbook (Device / User Investigation)
+        🔍 Incident Response Dashboard (Device / User Investigation, Data Exfil)
 
 📊 KPI Metrics         ─  looks back at how all of the above was handled
 
@@ -83,6 +84,28 @@ Panels are parameterized — **Hostname** + **Time Range** (plus **User** where 
 - **Audit-Only Rules** — rules that have never blocked, ranked as candidates to move from Audit to Block
 
 > 💡 A detection marked **Not Remediated** is worth more attention than three clean removals. And check sensor health first: a device that isn't reporting looks identical to a clean one.
+
+---
+
+## 🔍 Incident Response Dashboard
+
+**Purpose: on-demand investigation of one device or user, before, during and after a compromise.** Pick an entity and a time range and get one risk-scored, chronological timeline, with no query editing. Pages: [Device Investigation](Incident%20Response%20Dashboard/Device%20Investigation.md), [User Investigation](Incident%20Response%20Dashboard/User%20Investigation.md) and [Data Exfil](Incident%20Response%20Dashboard/Data%20Exfil.md).
+
+Every Device and User row is tagged with a **Phase**:
+
+| Phase | Answers |
+| --- | --- |
+| 1️⃣ Pre-Compromise | Was this entity targeted? Phishing, spray, brute force, exposed ports, risky downloads, blocked threats |
+| 2️⃣ Initial Access | Did the attack get in? First execution, risky sign-ins, clicked phishing, token replay |
+| 3️⃣ Post-Compromise | What happened next? Persistence, credential theft, lateral movement, mailbox abuse, exfil |
+
+- **🖥️ Device Investigation** — targeting and attempts, initial access, persistence, credential access, evasion, ransomware prep, discovery, lateral movement, egress, backdoors, remote tools and Defender detections. Context panels: Device Info, Processes, Details, IOC
+- **👤 User Investigation** — phishing clicks, token replay, risky and unusual sign-ins, malicious IPs, MFA and password changes, roles, OAuth consent, mailbox rules, delegation and export. Panels: Sign-In Activity, Phishing Received, Containment Status, User Info, Apps, IPs & Locations, Devices
+- **📤 Data Exfil** — file-sharing and paste uploads, exfil tooling, mass archiving, removable media, bulk cloud download, outbound attachments, forwarding rules and connection fan-out
+
+> 💡 **The pages pivot into each other.** A risky sign-in names a device; a compromised endpoint names a logged-in account; either one showing staging leads to Data Exfil. Start with whichever entity you have and follow the trail.
+
+![Device Investigation dashboard](Incident%20Response%20Dashboard/Image/image.png)
 
 ---
 
@@ -156,7 +179,8 @@ Neither replaces the other. Alerts and EDR tell you protection is working; Threa
 | A user is getting MFA-bombed or signed in from a bad IP | 🎯 Threat Hunting (User Hunts) |
 | Reporting on response times or analyst workload | 📊 KPI Metrics |
 | A connector, agent or table went quiet, or ingestion cost jumped | 📡 SIEM Dashboard |
-| Anything worth digging into | 🔍 Incident Response Workbook |
+| An alert fired on a device, or a user reported phishing | 🔍 Incident Response Dashboard |
+| Suspected data theft by a user or device | 🔍 Incident Response Dashboard (Data Exfil) |
 
 ---
 
