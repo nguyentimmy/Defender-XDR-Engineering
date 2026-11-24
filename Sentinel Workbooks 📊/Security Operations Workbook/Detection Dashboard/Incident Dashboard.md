@@ -4,7 +4,7 @@ The **Incident Dashboard** group of the Detection Dashboard tab, below the [Aler
 
 > **Disclaimer:** This workbook does not replace alert triage. Alerts and incidents should still be investigated for a deeper investigation.
 
-**Parameters:** `Owner` (analyst name or email, optional), `TimeRange`. Leave Owner empty to see every incident.
+**Parameters:** `Owner` (dropdown of incident owners plus Unassigned; default All), `TimeRange`.
 
 | Panel | Visualization | Shows |
 |---|---|---|
@@ -28,7 +28,6 @@ The **Incident Dashboard** group of the Detection Dashboard tab, below the [Aler
 Tiles. Title: `Metric`, Left: `Value`.
 
 ```kql
-let OwnerSearch = tolower(trim(" ", "{Owner}"));
 let SlaHours = dynamic({"High": 4, "Medium": 24, "Low": 72, "Informational": 168});
 let Inc = SecurityIncident
     | where TimeGenerated {TimeRange}
@@ -37,7 +36,7 @@ let Inc = SecurityIncident
                 FirstAck = minif(TimeGenerated, Status != "New" or isnotempty(tostring(Owner.assignedTo)))
              by IncidentNumber
     | extend OwnerName = coalesce(tostring(Owner.assignedTo), tostring(Owner.email), tostring(Owner.userPrincipalName))
-    | where isempty(OwnerSearch) or tolower(OwnerName) contains OwnerSearch
+    | where "{Owner}" == "*" or iff(isempty(OwnerName), "Unassigned", OwnerName) == "{Owner}"
     | extend IsOpen = Status != "Closed",
              AgeHours = datetime_diff("minute", iff(Status == "Closed", ClosedTime, now()), CreatedTime) / 60.0,
              AckHours = datetime_diff("minute", FirstAck, CreatedTime) / 60.0;
@@ -70,7 +69,6 @@ Inc
 Grid. Sorted by SLA breach, then severity, then oldest first.
 
 ```kql
-let OwnerSearch = tolower(trim(" ", "{Owner}"));
 let SlaHours = dynamic({"High": 4, "Medium": 24, "Low": 72, "Informational": 168});
 let StaleHours = 24;
 SecurityIncident
@@ -78,7 +76,7 @@ SecurityIncident
 | summarize arg_max(TimeGenerated, *) by IncidentNumber
 | where Status != "Closed"
 | extend OwnerName = coalesce(tostring(Owner.assignedTo), tostring(Owner.email), tostring(Owner.userPrincipalName))
-| where isempty(OwnerSearch) or tolower(OwnerName) contains OwnerSearch
+| where "{Owner}" == "*" or iff(isempty(OwnerName), "Unassigned", OwnerName) == "{Owner}"
 | extend AgeHours = round(datetime_diff("minute", now(), CreatedTime) / 60.0, 1),
          SinceUpdateHours = round(datetime_diff("minute", now(), LastModifiedTime) / 60.0, 1),
          Sla = todouble(SlaHours[Severity])
@@ -109,13 +107,12 @@ SecurityIncident
 Pie chart. Series colors: High red, Medium orange, Low yellow, Informational gray.
 
 ```kql
-let OwnerSearch = tolower(trim(" ", "{Owner}"));
 SecurityIncident
 | where TimeGenerated {TimeRange}
 | where CreatedTime {TimeRange}
 | summarize arg_max(TimeGenerated, *) by IncidentNumber
 | extend OwnerName = coalesce(tostring(Owner.assignedTo), tostring(Owner.email), tostring(Owner.userPrincipalName))
-| where isempty(OwnerSearch) or tolower(OwnerName) contains OwnerSearch
+| where "{Owner}" == "*" or iff(isempty(OwnerName), "Unassigned", OwnerName) == "{Owner}"
 | extend Severity = case(Severity == "High", "🔴 High", Severity == "Medium", "🟠 Medium", Severity == "Low", "🟡 Low", "⚪ Informational")
 | summarize Incidents = count() by Severity
 | sort by Incidents desc
@@ -125,13 +122,12 @@ SecurityIncident
 Pie chart. Colors: New red, Active yellow, Closed green.
 
 ```kql
-let OwnerSearch = tolower(trim(" ", "{Owner}"));
 SecurityIncident
 | where TimeGenerated {TimeRange}
 | where CreatedTime {TimeRange}
 | summarize arg_max(TimeGenerated, *) by IncidentNumber
 | extend OwnerName = coalesce(tostring(Owner.assignedTo), tostring(Owner.email), tostring(Owner.userPrincipalName))
-| where isempty(OwnerSearch) or tolower(OwnerName) contains OwnerSearch
+| where "{Owner}" == "*" or iff(isempty(OwnerName), "Unassigned", OwnerName) == "{Owner}"
 | summarize Incidents = count() by Status
 ```
 
@@ -139,14 +135,13 @@ SecurityIncident
 Bar chart. Stacked by reason.
 
 ```kql
-let OwnerSearch = tolower(trim(" ", "{Owner}"));
 SecurityIncident
 | where TimeGenerated {TimeRange}
 | where CreatedTime {TimeRange}
 | summarize arg_max(TimeGenerated, *) by IncidentNumber
 | where Status == "Closed"
 | extend OwnerName = coalesce(tostring(Owner.assignedTo), tostring(Owner.email), tostring(Owner.userPrincipalName))
-| where isempty(OwnerSearch) or tolower(OwnerName) contains OwnerSearch
+| where "{Owner}" == "*" or iff(isempty(OwnerName), "Unassigned", OwnerName) == "{Owner}"
 | extend Classification = case(Classification == "TruePositive", "🎯 True Positive",
                                Classification == "BenignPositive", "🟢 Benign Positive",
                                Classification == "FalsePositive", "⚪ False Positive",
@@ -160,13 +155,12 @@ SecurityIncident
 Grid. The incidents that keep coming back. A title with a high false or benign positive share is a tuning candidate.
 
 ```kql
-let OwnerSearch = tolower(trim(" ", "{Owner}"));
 SecurityIncident
 | where TimeGenerated {TimeRange}
 | where CreatedTime {TimeRange}
 | summarize arg_max(TimeGenerated, *) by IncidentNumber
 | extend OwnerName = coalesce(tostring(Owner.assignedTo), tostring(Owner.email), tostring(Owner.userPrincipalName))
-| where isempty(OwnerSearch) or tolower(OwnerName) contains OwnerSearch
+| where "{Owner}" == "*" or iff(isempty(OwnerName), "Unassigned", OwnerName) == "{Owner}"
 | extend SevRank = case(Severity == "High", 4, Severity == "Medium", 3, Severity == "Low", 2, 1)
 | summarize Incidents = count(),
             Open = countif(Status != "Closed"),
@@ -188,13 +182,12 @@ SecurityIncident
 Grid. Hosts, accounts and IPs that appear in the most incidents. An entity in several open incidents is worth one investigation instead of many.
 
 ```kql
-let OwnerSearch = tolower(trim(" ", "{Owner}"));
 let Inc = SecurityIncident
     | where TimeGenerated {TimeRange}
     | where CreatedTime {TimeRange}
     | summarize arg_max(TimeGenerated, *) by IncidentNumber
     | extend OwnerName = coalesce(tostring(Owner.assignedTo), tostring(Owner.email), tostring(Owner.userPrincipalName))
-    | where isempty(OwnerSearch) or tolower(OwnerName) contains OwnerSearch
+    | where "{Owner}" == "*" or iff(isempty(OwnerName), "Unassigned", OwnerName) == "{Owner}"
     | mv-expand AlertId = AlertIds to typeof(string)
     | project IncidentNumber, Status, Severity, AlertId;
 let Alerts = SecurityAlert
@@ -223,13 +216,12 @@ Inc
 Time chart. Same severity colors as the pie. Change `1d` to `1h` for ranges under about 3 days.
 
 ```kql
-let OwnerSearch = tolower(trim(" ", "{Owner}"));
 SecurityIncident
 | where TimeGenerated {TimeRange}
 | where CreatedTime {TimeRange}
 | summarize arg_max(TimeGenerated, *) by IncidentNumber
 | extend OwnerName = coalesce(tostring(Owner.assignedTo), tostring(Owner.email), tostring(Owner.userPrincipalName))
-| where isempty(OwnerSearch) or tolower(OwnerName) contains OwnerSearch
+| where "{Owner}" == "*" or iff(isempty(OwnerName), "Unassigned", OwnerName) == "{Owner}"
 | summarize Incidents = count() by bin(CreatedTime, 1d), Severity
 | render timechart
 ```
