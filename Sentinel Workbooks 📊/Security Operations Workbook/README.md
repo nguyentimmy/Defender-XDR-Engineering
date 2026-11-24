@@ -6,6 +6,14 @@ Six tabs inside one Sentinel workbook. They're not alternatives to each other �
 
 ---
 
+## 🚀 Deploy
+
+Deploy the whole workbook in one step with the ARM template, or paste the gallery JSON into the Workbooks Advanced Editor. See [Deploy](Deploy/README.md).
+
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fnguyentimmy%2FDefender-XDR-Engineering%2Fmain%2FSentinel%2520Workbooks%2520%25F0%259F%2593%258A%2FSecurity%2520Operations%2520Workbook%2FDeploy%2Fazuredeploy.json)
+
+---
+
 ## 🗺️ The six tabs at a glance
 
 | Tab | Mode | Question it answers |
