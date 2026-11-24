@@ -1,6 +1,6 @@
-# 🖥️ Detection Overview
+# 🖥️ Detection Overview: Alerts
 
-The Detection Overview tab of the Security Operations Workbook: an at-a-glance view of everything that alerted, built on the Sentinel `SecurityAlert` table.
+The alert page of the Detection Overview tab: an at-a-glance view of everything that alerted, built on the Sentinel `SecurityAlert` table. For the incident (case) view, see [Incidents](Incidents.md).
 
 > **Disclaimer:** This workbook does not replace alert triage. Alerts and incidents should still be investigated for a deeper investigation.
 

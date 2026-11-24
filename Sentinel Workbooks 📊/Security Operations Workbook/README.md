@@ -1,17 +1,16 @@
 # 📊 Security Operations Workbook — How These Fit Together
 
-Five tabs inside one Sentinel workbook. They're not alternatives to each other — together they cover the full loop of detection, prevention, hunting, and measuring how well the SOC responds.
+Four tabs inside one Sentinel workbook. They're not alternatives to each other — together they cover the full loop of detection, prevention, hunting, and measuring how well the SOC responds.
 
 > **Disclaimer:** This workbook does not replace alert triage. Alerts and incidents should still be investigated — the workbook supports deeper investigation.
 
 ---
 
-## 🗺️ The five tabs at a glance
+## 🗺️ The four tabs at a glance
 
 | Tab | Mode | Question it answers |
 | --- | --- | --- |
 | 🖥️ **Detection Overview** | Passive, continuous | *What's alerting, how bad is it, and where?* |
-| 🗂️ **Incident Overview** | Passive, continuous | *What cases are open, who owns them, how old are they, and what keeps coming back?* |
 | 🛡️ **EDR Overview** (AV + ASR) | Passive, continuous | *What did Defender catch or block — did it clean up, and is the sensor even reporting?* |
 | 📊 **KPI Metrics** | Retrospective | *How fast and how accurately is the SOC responding?* |
 | 🎯 **Threat Hunting** | Active, daily | *What's happening that nothing caught yet?* |
@@ -24,7 +23,6 @@ Panels are parameterized — **Hostname** + **Time Range** (plus **User** where 
 
 ```
 🖥️ Detection Overview  ⎫
-🗂️ Incident Overview   ⎪
                          ⎬  passive signal — what fired and what protection stopped
 🛡️ EDR Overview        ⎭
 
@@ -44,29 +42,23 @@ Panels are parameterized — **Hostname** + **Time Range** (plus **User** where 
 
 ## 🖥️ Detection Overview
 
-**Purpose: the at-a-glance view of everything that alerted.**
+**Purpose: the at-a-glance view of everything that alerted, and of the incidents (cases) those alerts became.** Split into two pages: [Alerts](Detection%20Overview/Alerts.md) and [Incidents](Detection%20Overview/Incidents.md).
 
+### 🚨 Alerts
 - **Alerts** — searchable alert table with status, severity, device, account, files, commands, and IOCs
 - **Detection by Severity + Alert Status** — how bad, and how much is still open
 - **Detections by Technique + Alerts Over Time by Severity** — what attackers are attempting, and when
 - **Top 10 Alert Types** — the noisiest detections, with severity and product
 - **Processes on Device** — process activity over time for the selected host
 
-> 💡 Start here every morning. A rising count of **New** alerts or a spike in one technique tells you where to look before anything else.
-
----
-
-## 🗂️ Incident Overview
-
-**Purpose: the case-level view: what's open, who owns it, and what's breaching SLA.**
-
+### 🗂️ Incidents
 - **Incident Summary** — open, unassigned, open High, SLA breached, MTTA, MTTR and true positive rate
 - **Open Incident Queue** — every open incident with owner, age and ⏰ SLA / 🙋 unassigned / 💤 stale flags
 - **Severity, Status and Classification** — how bad, how much is still open, and how cases are being closed
 - **Top 10 Recurring Incidents** — titles that keep coming back, with their noise rate
 - **Most Involved Entities** — hosts, accounts and IPs that appear across the most incidents
 
-> 💡 Check the queue after Detection Overview. Unassigned or SLA-breached incidents come first.
+> 💡 Start here every morning. A rising count of **New** alerts or a spike in one technique tells you where to look before anything else.
 
 ---
 
@@ -136,8 +128,8 @@ Neither replaces the other. Alerts and EDR tell you protection is working; Threa
 
 | Situation | Tab |
 | --- | --- |
-| Morning check — what's alerting? | 🖥️ Detection Overview |
-| What cases are open, unassigned or breaching SLA? | 🗂️ Incident Overview |
+| Morning check — what's alerting? | 🖥️ Detection Overview (Alerts) |
+| What cases are open, unassigned or breaching SLA? | 🖥️ Detection Overview (Incidents) |
 | Daily proactive sweep | 🎯 Threat Hunting |
 | A detection came back unremediated | 🛡️ EDR Overview (AV) → escalate if unresolved |
 | Checking whether a sensor is down or tamper protection is off | 🛡️ EDR Overview (Defender Health) |
