@@ -42,16 +42,16 @@ Panels are parameterized — **Hostname** + **Time Range** (plus **User** where 
 
 ## 🖥️ Detection Overview
 
-**Purpose: the at-a-glance view of everything that alerted, and of the incidents (cases) those alerts became.** Split into two pages: [Alerts](Detection%20Overview/Alerts.md) and [Incidents](Detection%20Overview/Incidents.md).
+**Purpose: the at-a-glance view of everything that alerted, and of the incidents (cases) those alerts became.** Two groups in the same tab: [Alert Overview](Detection%20Overview/Alert%20Overview.md) and [Incident Overview](Detection%20Overview/Incident%20Overview.md).
 
-### 🚨 Alerts
+### 🚨 Alert Overview
 - **Alerts** — searchable alert table with status, severity, device, account, files, commands, and IOCs
 - **Detection by Severity + Alert Status** — how bad, and how much is still open
 - **Detections by Technique + Alerts Over Time by Severity** — what attackers are attempting, and when
 - **Top 10 Alert Types** — the noisiest detections, with severity and product
 - **Processes on Device** — process activity over time for the selected host
 
-### 🗂️ Incidents
+### 🗂️ Incident Overview
 - **Incident Summary** — open, unassigned, open High, SLA breached, MTTA, MTTR and true positive rate
 - **Open Incident Queue** — every open incident with owner, age and ⏰ SLA / 🙋 unassigned / 💤 stale flags
 - **Severity, Status and Classification** — how bad, how much is still open, and how cases are being closed
@@ -128,8 +128,8 @@ Neither replaces the other. Alerts and EDR tell you protection is working; Threa
 
 | Situation | Tab |
 | --- | --- |
-| Morning check — what's alerting? | 🖥️ Detection Overview (Alerts) |
-| What cases are open, unassigned or breaching SLA? | 🖥️ Detection Overview (Incidents) |
+| Morning check — what's alerting? | 🖥️ Detection Overview (Alert Overview) |
+| What cases are open, unassigned or breaching SLA? | 🖥️ Detection Overview (Incident Overview) |
 | Daily proactive sweep | 🎯 Threat Hunting |
 | A detection came back unremediated | 🛡️ EDR Overview (AV) → escalate if unresolved |
 | Checking whether a sensor is down or tamper protection is off | 🛡️ EDR Overview (Defender Health) |
