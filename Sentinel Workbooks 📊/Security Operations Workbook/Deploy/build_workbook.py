@@ -177,6 +177,15 @@ def group_item(name, items, cond_param, cond_value):
     }
 
 
+OWNER_QUERY = """SecurityIncident
+| where TimeGenerated {TimeRange}
+| summarize arg_max(TimeGenerated, Owner) by IncidentNumber
+| extend OwnerName = coalesce(tostring(Owner.assignedTo), tostring(Owner.email), tostring(Owner.userPrincipalName))
+| extend OwnerName = iff(isempty(OwnerName), "Unassigned", OwnerName)
+| distinct OwnerName
+| sort by OwnerName asc"""
+
+
 def parameters_item():
     def text(name, label, desc):
         return {"id": sid("param", name), "version": "KqlParameterItem/1.0", "name": name, "label": label,
@@ -194,7 +203,14 @@ def parameters_item():
                 text("DeviceName", "Hostname", "Device name or part of it. Leave empty for all devices."),
                 text("UserName", "User", "UPN or name part. Leave empty for all users (Alert Dashboard)."),
                 text("UserPrincipalName", "User UPN", "Full UPN for User Investigation and user hunts."),
-                text("Owner", "Analyst", "Incident owner name or email (Incident Dashboard). Leave empty for all."),
+                {"id": sid("param", "Owner"), "version": "KqlParameterItem/1.0", "name": "Owner",
+                 "label": "Analyst", "type": 2, "isRequired": True, "multiSelect": False,
+                 "description": "Incident owner (Incident Dashboard). All shows every incident.",
+                 "query": OWNER_QUERY, "value": "*",
+                 "typeSettings": {"additionalResourceOptions": ["value::all"], "selectAllValue": "*",
+                                  "showDefault": False},
+                 "timeContext": {"durationMs": 604800000}, "timeContextFromParameter": "TimeRange",
+                 "queryType": 0, "resourceType": "microsoft.operationalinsights/workspaces"},
             ],
             "style": "pills",
             "queryType": 0,
