@@ -65,7 +65,7 @@ Filter on **Phase** to answer "was it only targeted?" (Pre-Compromise rows only)
 ---
 
 ## 📊 Visualization of the Dashboard
-![Device Investigation dashboard](Image/image.png)
+![Device Investigation dashboard](../../../images/ir-device-triage.png)
 
 ---
 
