@@ -1,6 +1,6 @@
-# 🗂️ Incident Overview
+# 🗂️ Incident Dashboard
 
-The **Incident Overview** group of the Detection Overview tab, below the [Alert Overview](Alert%20Overview.md) group. Where Alert Overview counts alerts, this view counts incidents (cases): what's open, who owns it, how old it is, how it was closed and what keeps coming back. It's built on the Sentinel `SecurityIncident` table, which also holds Defender XDR incidents synced through the connector.
+The **Incident Dashboard** group of the Detection Dashboard tab, below the [Alert Dashboard](Alert%20Dashboard.md) group. Where Alert Dashboard counts alerts, this view counts incidents (cases): what's open, who owns it, how old it is, how it was closed and what keeps coming back. It's built on the Sentinel `SecurityIncident` table, which also holds Defender XDR incidents synced through the connector.
 
 > **Disclaimer:** This workbook does not replace alert triage. Alerts and incidents should still be investigated for a deeper investigation.
 
