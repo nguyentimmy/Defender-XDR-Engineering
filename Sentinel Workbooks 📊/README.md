@@ -1,120 +1,53 @@
-# 🛡️ Sentinel Workbook Suite — How These Fit Together
+# 🛡️ Sentinel Workbooks
 
-Two Microsoft Sentinel / Defender XDR workbooks. They are not alternatives to each other — they're sequential stages of the same investigation, and one hands off to the next.
+Everything lives in one Microsoft Sentinel / Defender XDR workbook: the **[📊 Security Operations Workbook](Security%20Operations%20Workbook/README.md)**. Fleet-wide dashboards surface something worth a look, and the Incident Response Dashboard in the same workbook investigates it, so there's no switching between workbooks.
+
+> ⚠️ This workbook does not replace alert triage. Alerts and incidents should still be investigated for a deeper investigation.
 
 ---
 
-## 🗺️ The two at a glance
+## 🗺️ The tabs at a glance
 
-| Workbook | Mode | Question it answers | Scope |
-| --- | --- | --- | --- |
-| 📊 **Security Operations** | Continuous monitoring + on-demand investigation | *Is anything wrong across the fleet, and what happened to this device or user?* | All devices, or one entity in the Incident Response Dashboard |
-| 🔬 **Digital Forensics** | On-demand, narrow window | *Reconstruct exactly what occurred* | One entity, minutes to hours |
+| Tab | Question it answers |
+| --- | --- |
+| 🖥️ **Detection Dashboard** | *What's alerting, and which incidents are open?* |
+| 🛡️ **EDR Dashboard** | *What did Defender catch or block, and is the sensor reporting?* |
+| 🔍 **Incident Response Dashboard** | *What happened to this device or user, before and after compromise?* |
+| 📊 **KPI Metrics Dashboard** | *How fast and how accurately is the SOC responding?* |
+| 🎯 **Threat Hunt Dashboard** | *What's happening that nothing caught yet?* |
+| 📡 **SIEM Dashboard** | *Is the data we detect on still arriving, on time and within budget?* |
 
 ---
 
 ## 🔄 The workflow
 
 ```
-📊 Security Operations Workbook
-   Fleet-wide dashboards — something surfaces
-              ↓  gives you an entity
-   🔍 Incident Response Dashboard (same workbook)
-   Unified device, user + data exfil timeline — confirms and scopes
-              ↓  gives you a device AND a timestamp
-🔬 Digital Forensics Workbook
-   Complete unfiltered evidence in that window
+🖥️ Detection · 🛡️ EDR · 🎯 Threat Hunt
+   Fleet-wide — something surfaces
+              ↓  gives you a device or user
+🔍 Incident Response Dashboard
+   Risk-scored device, user + data exfil timeline — confirms and scopes
+              ↓  need every raw event?
+   Defender XDR device timeline (unfiltered, exportable)
+
+📊 KPI Metrics — how it was handled   ·   📡 SIEM — is the data still arriving?
 ```
 
-The dependency runs one direction. **You can't start with forensics**, because forensics needs a narrow time window to be usable — and you don't know the window until IR tells you when the activity happened.
-
 ---
 
-## 📊 Security Operations Workbook
+## 🧭 Quick reference — where do I look?
 
-**Purpose: continuous security monitoring.**
-
-This is the one you glance at. It watches the fleet for alerts, prevention hits, evasion attempts, and telemetry gaps — activity that isn't tied to a specific open investigation.
-
-**Detection overview** — alerts by severity, technique, and status, top alert types, alerts over time, and a searchable alert table with entities and IOCs.
-
-**EDR Dashboard** — risk-scored antivirus detections (remediated vs. not), EDR evasion attempts, Defender sensor health with tamper protection state, sensor coverage, and onboarding status.
-
-**ASR Dashboard** — ASR blocks vs. audits, hits by rule, top triggering processes and devices, and audit-only rules that are ready to switch to Block.
-
-It's the layer that tells you *where to look*. When a device shows up here repeatedly, or an AV detection comes back unremediated, that device becomes the input to the Incident Response Dashboard.
-
-> 💡 Check sensor health first — devices that aren't reporting telemetry look identical to clean devices, so it determines how much you can trust every other panel.
-
----
-
-## 🔍 Incident Response Dashboard
-
-**Purpose: streamline unified events across device and user compromise.** It's a tab of the Security Operations Workbook.
-
-This is the core of the suite. Pick a device or an account, pick a time range, and get a single chronological timeline of post-compromise activity — no query editing, no jumping between tabs.
-
-Without it, investigating one suspect entity means opening a dozen separate queries across process, registry, network, identity, and mailbox telemetry, then lining up timestamps by hand. During an active incident that setup work is the bottleneck, not the analysis. This collapses it into one view.
-
-**Device tab** — persistence, credential access, defense evasion, ransomware prep, categorized recon, lateral movement, network egress, backdoor shells, unauthorized remote tools, Defender detections.
-
-**User tab** — risky sign-ins, brute force and MFA fatigue, impossible travel, new-country and malicious-IP logons, legacy auth, MFA and password changes, role assignments, OAuth consent grants, inbox forwarding rules, mailbox delegation and export.
-
-**Data Exfil tab** — uploads to file-sharing, paste and webhook sites, exfil tooling, archiving and staging, removable media, bulk cloud downloads, outbound attachments, and sensitive file movement.
-
-Results are **filtered and scored**. Known-benign activity is suppressed so the timeline stays readable, while high-fidelity signals — credential dumping, ransomware prep, backdoor shells, defense evasion — always surface regardless of suppression. It also surfaces the noisier, lower-severity activity that never became an alert, alongside the alerts themselves.
-
-> ⚠️ This workbook does not replace alert triage. Alerts and incidents should still be investigated — IR supports the deeper investigation.
-
-> 💡 **The two tabs pivot into each other.** Most intrusions cross both the endpoint and the identity plane. A risky sign-in names a device; a compromised endpoint names a logged-in account. Start with whichever entity you have and follow the trail to the other.
-
----
-
-## 🔬 Digital Forensics Workbook
-
-**Purpose: deeper analysis of the events IR surfaced.**
-
-Once IR tells you *what* happened and *when*, this workbook reconstructs it completely. Set the same device and a tight window around the activity, and every panel scopes to it simultaneously.
-
-Panels cover process execution and lineage, file system activity, network and DNS, logon sessions, and persistence and autoruns inventory.
-
-The critical difference: **this workbook does not filter.** Where IR suppresses benign activity to stay readable, forensics shows everything in the window. That's deliberate — you're reconstructing a sequence, and the "benign" rows are often what explain how the malicious ones connect. Filtering here would delete the evidence.
-
-Panels are separate steps sharing one parameter set, so you can read across them and correlate a process start against the file it wrote and the connection it opened at the same timestamps.
-
-> 💡 Start with a one-to-two-hour window around the event and widen only as needed. These panels return everything — a multi-day window on a busy host will hit the row cap.
-
----
-
-## ⚖️ Filtered vs. unfiltered — why it matters
-
-The single most important distinction between IR and Forensics:
-
-| | Incident Response | Digital Forensics |
-| --- | --- | --- |
-| Suppression | Benign parents filtered | None |
-| Scoring | Signals classified and ranked | Chronological, unranked |
-| Result size | Dozens of rows | Hundreds to thousands |
-| Time window | 24 hours to 7 days | Minutes to hours |
-| Purpose | Detect and scope | Reconstruct and document |
-
-Both approaches are correct for their stage. Carrying IR's exclusion lists into forensics would remove the very rows that explain the sequence; carrying forensics' completeness into IR would bury the signals under normal system activity.
-
----
-
-## 🧭 Quick reference — which one do I open?
-
-| Situation | Workbook |
+| Situation | Tab |
 | --- | --- |
-| Morning check, nothing specific | 📊 Security Operations |
-| An alert fired on a device | 📊 Security Operations (Incident Response Dashboard) |
-| A user reported a phishing email | 📊 Security Operations (Incident Response Dashboard, User Investigation) |
-| IR showed credential dumping at 14:22 | 🔬 Digital Forensics, scoped 14:00–14:45 |
-| Writing the incident report timeline | 🔬 Digital Forensics |
-| Checking whether protection is disabled anywhere | 📊 Security Operations |
-| Deciding which ASR rules to move from Audit to Block | 📊 Security Operations |
-| Suspected data theft by a user or device | 📊 Security Operations (Incident Response Dashboard, Data Exfil) |
-| A connector, agent or table went quiet, or ingestion cost jumped | 📊 Security Operations (SIEM Dashboard) |
+| Morning check, nothing specific | 🖥️ Detection Dashboard |
+| An alert fired on a device | 🔍 Incident Response Dashboard (Device Investigation) |
+| A user reported a phishing email | 🔍 Incident Response Dashboard (User Investigation) |
+| Suspected data theft by a user or device | 🔍 Incident Response Dashboard (Data Exfil) |
+| Checking whether protection is disabled anywhere | 🛡️ EDR Dashboard |
+| Deciding which ASR rules to move from Audit to Block | 🛡️ EDR Dashboard |
+| Reporting on response times or analyst workload | 📊 KPI Metrics Dashboard |
+| A connector, agent or table went quiet, or ingestion cost jumped | 📡 SIEM Dashboard |
+| Need every raw event for the incident report | Defender XDR device timeline |
 
 ---
 

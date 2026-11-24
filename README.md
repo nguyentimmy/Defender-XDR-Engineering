@@ -51,7 +51,6 @@ Both are needed. They solve different problems.
 | --- | --- | --- |
 | **🖥️ Security Operations** | Detection Dashboard, EDR Dashboard (AV detections, EDR evasions, Defender health, ASR blocks vs audits), KPI Metrics, Threat Hunting, SIEM Dashboard (ingestion, connector and rule health) and Incident Response Dashboard (risk-scored device, user and data exfil timelines) | Daily/weekly proactive review |
 | **🎯 Threat Hunting** | Daily Hunts for known attacker techniques, plus AI & Autonomous Threats for LLM misuse and machine-speed attacks | Start of shift, proactive hunting |
-| **🔎 Digital Forensics** | Device-scoped timelines: process lineage, file/registry/network activity, persistence inventory | Post-incident deep investigation |
 
 > ⚠️ Workbooks do not replace alert triage. Alerts and incidents should still be investigated; the workbooks support deeper investigation.
 
