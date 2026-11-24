@@ -115,7 +115,7 @@ Both approaches are correct for their stage. Carrying IR's exclusion lists into 
 | Checking whether protection is disabled anywhere | 📊 Security Operations |
 | Deciding which ASR rules to move from Audit to Block | 📊 Security Operations |
 | Suspected data theft by a user or device | 🔍 Incident Response (Data Exfil tab) |
-| A connector, agent or table went quiet, or ingestion cost jumped | 📊 Security Operations (SIEM Overview) |
+| A connector, agent or table went quiet, or ingestion cost jumped | 📊 Security Operations (SIEM Dashboard) |
 
 ---
 

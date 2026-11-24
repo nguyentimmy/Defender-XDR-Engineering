@@ -1,4 +1,4 @@
-# 📊 KPI Metrics Overview
+# 📊 KPI Metrics Dashboard
 
 The KPI Metrics tab of the Security Operations Workbook: SOC optimization. It looks back at closed and open incidents in `SecurityIncident` to measure how fast the SOC detects, picks up and resolves incidents, how the work is spread across analysts, and how much of the alerting is real.
 

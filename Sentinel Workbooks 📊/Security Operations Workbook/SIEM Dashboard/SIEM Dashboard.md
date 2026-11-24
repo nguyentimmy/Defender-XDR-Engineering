@@ -1,6 +1,6 @@
-# 📡 SIEM Overview
+# 📡 SIEM Dashboard
 
-The SIEM Overview tab of the Security Operations Workbook covers the health of the SIEM itself: how much data is coming in and what it costs, whether connectors and agents are still sending, how late data arrives, and whether analytics and automation rules are running. If a table goes quiet, every detection built on it goes quiet too, so this is the view that tells you how far to trust the others.
+The SIEM Dashboard tab of the Security Operations Workbook covers the health of the SIEM itself: how much data is coming in and what it costs, whether connectors and agents are still sending, how late data arrives, and whether analytics and automation rules are running. If a table goes quiet, every detection built on it goes quiet too, so this is the view that tells you how far to trust the others.
 
 | Panel | Visualization | Shows |
 |---|---|---|

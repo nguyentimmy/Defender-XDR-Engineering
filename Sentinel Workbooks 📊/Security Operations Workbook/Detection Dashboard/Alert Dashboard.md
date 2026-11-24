@@ -1,6 +1,6 @@
-# 🚨 Alert Overview
+# 🚨 Alert Dashboard
 
-The **Alert Overview** group of the Detection Overview tab: an at-a-glance view of everything that alerted, built on the Sentinel `SecurityAlert` table. The [Incident Overview](Incident%20Overview.md) group sits below it in the same tab.
+The **Alert Dashboard** group of the Detection Dashboard tab: an at-a-glance view of everything that alerted, built on the Sentinel `SecurityAlert` table. The [Incident Dashboard](Incident%20Dashboard.md) group sits below it in the same tab.
 
 > **Disclaimer:** This workbook does not replace alert triage. Alerts and incidents should still be investigated for a deeper investigation.
 

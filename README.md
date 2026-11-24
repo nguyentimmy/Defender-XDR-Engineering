@@ -49,7 +49,7 @@ Both are needed. They solve different problems.
 
 | Workbook | Purpose | When to use |
 | --- | --- | --- |
-| **🖥️ Security Operations** | Detection Overview, EDR Overview (AV detections, EDR evasions, Defender health, ASR blocks vs audits), KPI Metrics, Threat Hunting and SIEM Overview (ingestion, connector and rule health) | Daily/weekly proactive review |
+| **🖥️ Security Operations** | Detection Dashboard, EDR Dashboard (AV detections, EDR evasions, Defender health, ASR blocks vs audits), KPI Metrics, Threat Hunting and SIEM Dashboard (ingestion, connector and rule health) | Daily/weekly proactive review |
 | **🎯 Threat Hunting** | Daily Hunts for known attacker techniques, plus AI & Autonomous Threats for LLM misuse and machine-speed attacks | Start of shift, proactive hunting |
 | **🚨 Incident Response** | Unified, risk-scored timeline of suspicious activity per device, user or data exfil path, surfacing activity that never became an alert | Active incident, first response |
 | **🔎 Digital Forensics** | Device-scoped timelines: process lineage, file/registry/network activity, persistence inventory | Post-incident deep investigation |
@@ -88,9 +88,9 @@ Both are needed. They solve different problems.
 
 ## 📸 Examples
 
-**🖥️ Detection Overview:** alerts by severity and tactic, top alert types, alerts over time, and the top commands, files and IOCs pulled from alerts.
+**🖥️ Detection Dashboard:** alerts by severity and tactic, top alert types, alerts over time, and the top commands, files and IOCs pulled from alerts.
 
-![Detection Overview](images/detection-overview.png)
+![Detection Dashboard](images/detection-overview.png)
 
 **🛡️ EDR Dashboard:** antivirus detections, EDR evasions, Defender health with tamper protection, and sensor coverage.
 

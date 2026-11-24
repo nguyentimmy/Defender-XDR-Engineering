@@ -10,11 +10,11 @@ Five tabs inside one Sentinel workbook. They're not alternatives to each other �
 
 | Tab | Mode | Question it answers |
 | --- | --- | --- |
-| 🖥️ **Detection Overview** | Passive, continuous | *What's alerting, how bad is it, and where?* |
-| 🛡️ **EDR Overview** (AV + ASR) | Passive, continuous | *What did Defender catch or block — did it clean up, and is the sensor even reporting?* |
+| 🖥️ **Detection Dashboard** | Passive, continuous | *What's alerting, how bad is it, and where?* |
+| 🛡️ **EDR Dashboard** (AV + ASR) | Passive, continuous | *What did Defender catch or block — did it clean up, and is the sensor even reporting?* |
 | 📊 **KPI Metrics** | Retrospective | *How fast and how accurately is the SOC responding?* |
 | 🎯 **Threat Hunting** | Active, daily | *What's happening that nothing caught yet?* |
-| 📡 **SIEM Overview** | Passive, continuous | *Is the data we detect on still arriving, on time and within budget?* |
+| 📡 **SIEM Dashboard** | Passive, continuous | *Is the data we detect on still arriving, on time and within budget?* |
 
 Panels are parameterized — **Hostname** + **Time Range** (plus **User** where it applies). Leave the filters empty for a fleet-wide sweep, or fill them in to scope to one device or user.
 
@@ -23,9 +23,9 @@ Panels are parameterized — **Hostname** + **Time Range** (plus **User** where 
 ## 🔄 How they relate
 
 ```
-🖥️ Detection Overview  ⎫
+🖥️ Detection Dashboard  ⎫
                          ⎬  passive signal — what fired and what protection stopped
-🛡️ EDR Overview        ⎭
+🛡️ EDR Dashboard        ⎭
 
 🎯 Threat Hunting      ─  active search — finds what policy and signature can't
 
@@ -38,23 +38,23 @@ Panels are parameterized — **Hostname** + **Time Range** (plus **User** where 
 
 📊 KPI Metrics         ─  looks back at how all of the above was handled
 
-📡 SIEM Overview       ─  underneath everything: is the data still arriving?
+📡 SIEM Dashboard       ─  underneath everything: is the data still arriving?
 ```
 
 ---
 
-## 🖥️ Detection Overview
+## 🖥️ Detection Dashboard
 
-**Purpose: the at-a-glance view of everything that alerted, and of the incidents (cases) those alerts became.** Two groups in the same tab: [Alert Overview](Detection%20Overview/Alert%20Overview.md) and [Incident Overview](Detection%20Overview/Incident%20Overview.md).
+**Purpose: the at-a-glance view of everything that alerted, and of the incidents (cases) those alerts became.** Two groups in the same tab: [Alert Dashboard](Detection%20Dashboard/Alert%20Dashboard.md) and [Incident Dashboard](Detection%20Dashboard/Incident%20Dashboard.md).
 
-### 🚨 Alert Overview
+### 🚨 Alert Dashboard
 - **Alerts** — searchable alert table with status, severity, device, account, files, commands, and IOCs
 - **Detection by Severity + Alert Status** — how bad, and how much is still open
 - **Detections by Technique + Alerts Over Time by Severity** — what attackers are attempting, and when
 - **Top 10 Alert Types** — the noisiest detections, with severity and product
 - **Processes on Device** — process activity over time for the selected host
 
-### 🗂️ Incident Overview
+### 🗂️ Incident Dashboard
 - **Incident Summary** — open, unassigned, open High, SLA breached, MTTA, MTTR and true positive rate
 - **Open Incident Queue** — every open incident with owner, age and ⏰ SLA / 🙋 unassigned / 💤 stale flags
 - **Severity, Status and Classification** — how bad, how much is still open, and how cases are being closed
@@ -65,9 +65,9 @@ Panels are parameterized — **Hostname** + **Time Range** (plus **User** where 
 
 ---
 
-## 🛡️ EDR Overview
+## 🛡️ EDR Dashboard
 
-**Purpose: confirm what Defender caught and blocked — and whether the sensors can be trusted.** Two groups: [AV Overview](EDR%20Overview/AV%20Overview.md) and [ASR Overview](EDR%20Overview/ASR%20Overview.md).
+**Purpose: confirm what Defender caught and blocked — and whether the sensors can be trusted.** Two groups: [AV Dashboard](EDR%20Dashboard/AV%20Dashboard.md) and [ASR Dashboard](EDR%20Dashboard/ASR%20Dashboard.md).
 
 ### 🦠 AV
 - **Antivirus Detections** — every detection risk-scored by remediation status, whether it was running, threat family, and path
@@ -88,7 +88,7 @@ Panels are parameterized — **Hostname** + **Time Range** (plus **User** where 
 
 ## 📊 KPI Metrics
 
-**Purpose: SOC optimization — measure how fast and how accurately incidents are handled.** Full KQL: [KPI Metrics Overview](KPI%20Metrics%20Overview/KPI%20Metrics%20Overview.md)
+**Purpose: SOC optimization — measure how fast and how accurately incidents are handled.** Full KQL: [KPI Metrics Dashboard](KPI%20Metrics%20Dashboard/KPI%20Metrics%20Dashboard.md)
 
 - **MTTD / MTTA / MTTR** — mean time to detect, acknowledge, and resolve, with trends and breakdowns by severity
 - **Incidents by Analyst + Status** — workload and backlog per analyst
@@ -101,7 +101,7 @@ Panels are parameterized — **Hostname** + **Time Range** (plus **User** where 
 
 ## 🎯 Threat Hunting
 
-**Purpose: find what Detection Overview and EDR Overview structurally can't.** Full KQL: [Daily Hunts](Threat%20Hunt%20Overview/Daily%20Hunts.md) and [AI Autonomous Threats Hunts](Threat%20Hunt%20Overview/AI%20Autonomous%20Threats%20Hunts.md)
+**Purpose: find what Detection Dashboard and EDR Dashboard structurally can't.** Full KQL: [Daily Hunts](Threat%20Hunt%20Dashboard/Daily%20Hunts.md) and [AI Autonomous Threats Hunts](Threat%20Hunt%20Dashboard/AI%20Autonomous%20Threats%20Hunts.md)
 
 Proactive, technique-level daily hunts, split by entity:
 
@@ -114,9 +114,9 @@ Unlike the other tabs, nothing here fires on its own. It's only as current as th
 
 ---
 
-## 📡 SIEM Overview
+## 📡 SIEM Dashboard
 
-**Purpose: confirm the SIEM itself is healthy, because a quiet table means quiet detections.** Full KQL: [SIEM Overview](SIEM%20Overview/SIEM%20Overview.md)
+**Purpose: confirm the SIEM itself is healthy, because a quiet table means quiet detections.** Full KQL: [SIEM Dashboard](SIEM%20Dashboard/SIEM%20Dashboard.md)
 
 - **Ingestion Summary, Daily Ingestion, Top Tables** — how much data is coming in, from where, and what it costs
 - **Ingestion Anomalies + Top Noisy Sources** — sudden spikes or drops, and which sources drive volume
@@ -124,13 +124,13 @@ Unlike the other tabs, nothing here fires on its own. It's only as current as th
 - **Connector Health + Agent Heartbeat + Ingestion Latency** — whether collection is working and on time
 - **Rule & Automation Failures** — analytics and automation rules that failed
 
-> 💡 Check it when detections go unusually quiet, or once a day alongside Detection Overview.
+> 💡 Check it when detections go unusually quiet, or once a day alongside Detection Dashboard.
 
 ---
 
 ## ⚖️ Passive vs. active — why both are necessary
 
-| | Detection / EDR Overview | Threat Hunting |
+| | Detection / EDR Dashboard | Threat Hunting |
 | --- | --- | --- |
 | Trigger | Automatic — rule, policy, or signature match | Manual — analyst runs the query |
 | Cadence | Continuous, real-time | Daily |
@@ -146,16 +146,16 @@ Neither replaces the other. Alerts and EDR tell you protection is working; Threa
 
 | Situation | Tab |
 | --- | --- |
-| Morning check — what's alerting? | 🖥️ Detection Overview (Alert Overview) |
-| What cases are open, unassigned or breaching SLA? | 🖥️ Detection Overview (Incident Overview) |
+| Morning check — what's alerting? | 🖥️ Detection Dashboard (Alert Dashboard) |
+| What cases are open, unassigned or breaching SLA? | 🖥️ Detection Dashboard (Incident Dashboard) |
 | Daily proactive sweep | 🎯 Threat Hunting |
-| A detection came back unremediated | 🛡️ EDR Overview (AV) → escalate if unresolved |
-| Checking whether a sensor is down or tamper protection is off | 🛡️ EDR Overview (Defender Health) |
-| Same ASR rule firing across multiple devices | 🛡️ EDR Overview (ASR) → new campaign vs. FP |
-| Deciding which ASR rules to move from Audit to Block | 🛡️ EDR Overview (Audit-Only Rules) |
+| A detection came back unremediated | 🛡️ EDR Dashboard (AV) → escalate if unresolved |
+| Checking whether a sensor is down or tamper protection is off | 🛡️ EDR Dashboard (Defender Health) |
+| Same ASR rule firing across multiple devices | 🛡️ EDR Dashboard (ASR) → new campaign vs. FP |
+| Deciding which ASR rules to move from Audit to Block | 🛡️ EDR Dashboard (Audit-Only Rules) |
 | A user is getting MFA-bombed or signed in from a bad IP | 🎯 Threat Hunting (User Hunts) |
 | Reporting on response times or analyst workload | 📊 KPI Metrics |
-| A connector, agent or table went quiet, or ingestion cost jumped | 📡 SIEM Overview |
+| A connector, agent or table went quiet, or ingestion cost jumped | 📡 SIEM Dashboard |
 | Anything worth digging into | 🔍 Incident Response Workbook |
 
 ---
