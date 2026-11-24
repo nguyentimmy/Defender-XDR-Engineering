@@ -116,7 +116,7 @@ Unlike the other tabs, nothing here fires on its own. It's only as current as th
 
 ## 📡 SIEM Overview
 
-**Purpose: confirm the SIEM itself is healthy, because a quiet table means quiet detections.** Full KQL: [SIEM Overview](SIEM%20Overview/README.md)
+**Purpose: confirm the SIEM itself is healthy, because a quiet table means quiet detections.** Full KQL: [SIEM Overview](SIEM%20Overview/SIEM%20Overview.md)
 
 - **Ingestion Summary, Daily Ingestion, Top Tables** — how much data is coming in, from where, and what it costs
 - **Ingestion Anomalies + Top Noisy Sources** — sudden spikes or drops, and which sources drive volume
