@@ -12,8 +12,8 @@ Proactive threat hunting workbooks for Microsoft Sentinel and Defender XDR. **Da
 
 | Folder | Workbook | Focus |
 |---|---|---|
-| 📅 [Daily Hunts](Daily%20Hunts/README.md) | Daily Hunts | Known attacker techniques on devices |
-| 🤖 [AI Autonomous Hunts](AI%20Autonomous%20Hunts/README.md) | AI & Autonomous Threats | LLM API usage, offensive AI tooling and machine-speed attack activity |
+| 📅 [Daily Hunts](Daily%20Hunts.md) | Daily Hunts | Known attacker techniques on devices |
+| 🤖 [AI Autonomous Hunts](AI%20Autonomous%20Threats%20Hunts.md) | AI & Autonomous Threats | LLM API usage, offensive AI tooling and machine-speed attack activity |
 
 ---
 
