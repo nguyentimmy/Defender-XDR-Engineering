@@ -8,8 +8,8 @@ The EDR Overview tab of the Security Operations Workbook. It confirms what Defen
 
 | Section | Question it answers |
 | --- | --- |
-| 🦠 **[AV](AV/)** | *What did antivirus catch — did it clean up, is anyone tampering with the EDR, and is the sensor even reporting?* |
-| 🧱 **[ASR](ASR/)** | *What did attack surface reduction block or only audit — and which rules are ready to enforce?* |
+| 🦠 **[AV](AV%20Overview.md)** | *What did antivirus catch — did it clean up, is anyone tampering with the EDR, and is the sensor even reporting?* |
+| 🧱 **[ASR](ASR%20Overview.md)** | *What did attack surface reduction block or only audit — and which rules are ready to enforce?* |
 
 Both run passively and in parallel. They watch different failure modes: AV catches known-bad files, ASR blocks risky behavior by policy.
 
@@ -33,7 +33,7 @@ Both run passively and in parallel. They watch different failure modes: AV catch
 
 > 💡 Check **Defender Health** and **Sensor Coverage** first — a device that isn't reporting looks identical to a clean one. After that, a detection marked **Not Remediated** is worth more attention than three clean removals.
 
-Full KQL: [AV/README.md](AV/README.md)
+Full KQL: [AV Overview](AV%20Overview.md)
 
 ---
 
@@ -53,7 +53,7 @@ Full KQL: [AV/README.md](AV/README.md)
 
 > 💡 The same rule firing on the same device repeatedly is a stronger signal than a one-off hit. A spike across many devices usually means a new campaign — or a legitimate tool that needs an exclusion.
 
-Full KQL: [ASR/README.md](ASR/README.md)
+Full KQL: [ASR Overview](ASR%20Overview.md)
 
 ---
 
