@@ -55,4 +55,4 @@ Everything lives in one Microsoft Sentinel / Defender XDR workbook: the **[📊 
 
 Here's an example of the [Device Investigation](Security%20Operations%20Workbook/Incident%20Response%20Dashboard/Device%20Investigation.md) dashboard in action:
 
-![Device Investigation dashboard](Security%20Operations%20Workbook/Incident%20Response%20Dashboard/Image/image.png)
+![Device Investigation dashboard](../images/ir-device-triage.png)

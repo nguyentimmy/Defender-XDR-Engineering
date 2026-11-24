@@ -105,7 +105,7 @@ Every Device and User row is tagged with a **Phase**:
 
 > 💡 **The pages pivot into each other.** A risky sign-in names a device; a compromised endpoint names a logged-in account; either one showing staging leads to Data Exfil. Start with whichever entity you have and follow the trail.
 
-![Device Investigation dashboard](Incident%20Response%20Dashboard/Image/image.png)
+![Device Investigation dashboard](../../images/ir-device-triage.png)
 
 ---
 
