@@ -15,7 +15,7 @@ Sentinel workbook for Microsoft Defender antivirus detections, EDR tampering and
 | 🧬 Top Detected Threats | Grid | Top 10 threats with device count, remediation and first/last seen |
 | 🥷 EDR Evasions | Grid | BYOVD drivers, EDR-killer tools, EDR process/service kills, Defender tampering, Safe Mode abuse, log tampering |
 | 💓 Defender Health | Grid | Onboarded devices whose sensor isn't Active, plus devices with no sensor at all (Not Onboarded), with tamper protection state |
-| 📊 Sensor Coverage Tiles | Tiles | Total, onboarded, active, inactive, impaired and not onboarded devices, and coverage % of all devices |
+| 🖥️ Device Overview | Tiles | Total, onboarded, not onboarded, active, inactive and impaired devices, and onboarding coverage % |
 | 🟢 Active vs Inactive Sensors | Pie chart | Onboarded devices split by sensor health state |
 | 🥧 Onboarding Status | Pie chart | Onboarded vs. devices found by device discovery that aren't onboarded |
 | 🧩 Onboarded vs Not Onboarded | Pie chart | Devices with a Defender sensor vs. machines without one (heartbeat + device discovery) |
@@ -437,7 +437,7 @@ union
 
 **⚠️ Not Onboarded** rows have no Defender sensor at all, using the same 30-day logic as the [Not Onboarded Devices](#-not-onboarded-devices) panel.
 
-## 📊 Sensor Coverage Tiles
+## 🖥️ Device Overview
 Tiles: Title = `Metric`, Left = `Value`
 
 ```kql
@@ -470,19 +470,26 @@ let H = DeviceInfo
     | where isempty(TargetDevice) or DeviceName has TargetDevice
     | summarize arg_max(TimeGenerated, OnboardingStatus, SensorHealthState) by DeviceId
     | where OnboardingStatus == "Onboarded";
+let Onboarded = toscalar(H | count);
 let Missing = toscalar(NotOnboarded | count);
-let Total = toscalar(H | count) + Missing;
-union
-    (print Value = Total | extend Metric = "🖥️ Total Devices", Order = 0),
-    (H | summarize Value = count() | extend Metric = "💻 Onboarded", Order = 1),
-    (H | summarize Value = countif(SensorHealthState == "Active") | extend Metric = "✅ Active", Order = 2),
-    (H | summarize Value = countif(SensorHealthState == "Inactive") | extend Metric = "⛔ Inactive", Order = 3),
-    (H | summarize Value = countif(SensorHealthState has_any ("Impaired", "Misconfigured")) | extend Metric = "⚠️ Impaired", Order = 4),
-    (print Value = Missing | extend Metric = "🚫 Not Onboarded", Order = 5),
-    (H | summarize Value = tolong(round(100.0 * countif(SensorHealthState == "Active") / max_of(Total, 1))) | extend Metric = "📊 Coverage %", Order = 6)
-| sort by Order asc
-| project Metric, Value = tolong(Value)
+let Total = Onboarded + Missing;
+H
+| summarize Active = countif(SensorHealthState == "Active"),
+            Inactive = countif(SensorHealthState == "Inactive"),
+            Impaired = countif(SensorHealthState has_any ("Impaired", "Misconfigured"))
+| project Rows = pack_array(
+    bag_pack("Metric", "🖥️ Total Devices", "Value", tostring(Total)),
+    bag_pack("Metric", "💻 Onboarded", "Value", tostring(Onboarded)),
+    bag_pack("Metric", "🚫 Not Onboarded", "Value", tostring(Missing)),
+    bag_pack("Metric", "✅ Active", "Value", tostring(Active)),
+    bag_pack("Metric", "⛔ Inactive", "Value", tostring(Inactive)),
+    bag_pack("Metric", "⚠️ Impaired", "Value", tostring(Impaired)),
+    bag_pack("Metric", "📊 Onboarding Coverage", "Value", strcat(round(100.0 * Onboarded / max_of(Total, 1), 1), "%")))
+| mv-expand Rows
+| project Metric = tostring(Rows.Metric), Value = tostring(Rows.Value)
 ```
+
+**Onboarding Coverage** is onboarded devices out of all devices, onboarded plus not onboarded. Sensor health (Active, Inactive, Impaired) is in its own tiles and the **Active vs Inactive Sensors** pie.
 
 ## 🟢 Active vs Inactive Sensors
 Pie chart. Colors: Active green, Inactive red, Impaired orange, Unknown gray.
