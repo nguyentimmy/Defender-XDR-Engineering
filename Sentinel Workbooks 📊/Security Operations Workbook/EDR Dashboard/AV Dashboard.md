@@ -16,9 +16,9 @@ Sentinel workbook for Microsoft Defender antivirus detections, EDR tampering and
 | 🥷 EDR Evasions | Grid | BYOVD drivers, EDR-killer tools, EDR process/service kills, Defender tampering, Safe Mode abuse, log tampering |
 | 💓 Defender Health | Grid | Onboarded devices whose sensor isn't Active, plus devices with no sensor at all (Not Onboarded), with tamper protection state |
 | 📊 Sensor Coverage Tiles | Tiles | Total, onboarded, active, inactive, impaired and not onboarded devices, and coverage % of all devices |
-| 🟢 Active vs Inactive Sensors | Pie chart | All devices split by sensor health state, including Not Onboarded |
+| 🟢 Active vs Inactive Sensors | Pie chart | Onboarded devices split by sensor health state |
 | 🥧 Onboarding Status | Pie chart | Onboarded vs. devices found by device discovery that aren't onboarded |
-| 🧩 Onboarded vs Not Onboarded | Pie chart | VMs sending Azure Monitor heartbeats compared against Defender's onboarded devices |
+| 🧩 Onboarded vs Not Onboarded | Pie chart | Devices with a Defender sensor vs. machines without one (heartbeat + device discovery) |
 | 🚫 Not Onboarded Devices | Grid | Every machine without a Defender sensor, from Azure Monitor heartbeats and Defender device discovery |
 
 **Notes**
@@ -485,33 +485,10 @@ union
 ```
 
 ## 🟢 Active vs Inactive Sensors
-Pie chart. Colors: Active green, Inactive red, Impaired orange, Not Onboarded purple, Unknown gray.
+Pie chart. Colors: Active green, Inactive red, Impaired orange, Unknown gray.
 
 ```kql
 let TargetDevice = trim(" ", "{DeviceName}");
-let Lookback = 30d;
-let MDE = DeviceInfo
-    | where TimeGenerated > ago(Lookback)
-    | where OnboardingStatus == "Onboarded" or isnotempty(ClientVersion)
-    | summarize by Name = tolower(tostring(split(DeviceName, ".")[0]));
-let NotOnboarded = union isfuzzy=true
-    (Heartbeat
-        | where TimeGenerated > ago(Lookback)
-        | extend Name = tolower(tostring(split(Computer, ".")[0]))
-        | summarize arg_max(TimeGenerated, OSType, ComputerIP, ResourceGroup) by Name
-        | project Name, LastSeen = TimeGenerated, OS = OSType, IP = ComputerIP,
-                  Source = "Heartbeat (Azure Monitor agent)", Detail = strcat("RG: ", ResourceGroup)),
-    (DeviceInfo
-        | where TimeGenerated > ago(Lookback)
-        | where isnotempty(OnboardingStatus) and OnboardingStatus != "Onboarded"
-        | extend Name = tolower(tostring(split(DeviceName, ".")[0]))
-        | summarize arg_max(TimeGenerated, OSPlatform, OnboardingStatus, DeviceType, PublicIP) by Name
-        | project Name, LastSeen = TimeGenerated, OS = OSPlatform, IP = PublicIP,
-                  Source = "Defender device discovery", Detail = strcat(OnboardingStatus, " | ", DeviceType))
-    | where Name !in (MDE)
-    | where isempty(TargetDevice) or Name has tolower(TargetDevice)
-    | summarize LastSeen = max(LastSeen), OS = take_any(OS), IP = take_any(IP),
-                Sources = make_set(Source), Detail = take_any(Detail) by Name;
 DeviceInfo
 | where TimeGenerated {TimeRange}
 | where isempty(TargetDevice) or DeviceName has TargetDevice
@@ -523,9 +500,9 @@ DeviceInfo
     SensorHealthState has_any ("Impaired", "Misconfigured"), "⚠️ Impaired",
     "❔ Unknown")
 | summarize Devices = count() by Status
-| union (NotOnboarded | summarize Devices = count() | extend Status = "🚫 Not Onboarded")
-| where Devices > 0
 ```
+
+Onboarded devices only. Devices without a sensor are in **Onboarded vs Not Onboarded**.
 
 ## 🥧 Onboarding Status
 Pie chart. Colors: Onboarded green, Not Onboarded orange, Unsupported red, Insufficient Info gray.
@@ -550,21 +527,40 @@ DeviceInfo
 Pie chart. Colors: Onboarded green, Not Onboarded orange.
 
 ```kql
-let TargetDevice = trim(" ", "{DeviceName}");
+let TargetDevice = tolower(trim(" ", "{DeviceName}"));
+let Lookback = 30d;
 let MDE = DeviceInfo
-    | where TimeGenerated > ago(30d)
-    | where isempty(TargetDevice) or DeviceName has TargetDevice
-    | where OnboardingStatus == "Onboarded"
+    | where TimeGenerated > ago(Lookback)
+    | where OnboardingStatus == "Onboarded" or isnotempty(ClientVersion)
     | summarize by Name = tolower(tostring(split(DeviceName, ".")[0]));
-Heartbeat
-| where TimeGenerated > ago(30d)
-| where isempty(TargetDevice) or Computer has TargetDevice
-| summarize arg_max(TimeGenerated, OSType) by Name = tolower(tostring(split(Computer, ".")[0]))
-| extend Status = iff(Name in (MDE), "✅ Onboarded", "⚠️ Not Onboarded")
-| summarize Devices = count() by Status
+let NotOnboarded = union isfuzzy=true
+    (Heartbeat
+        | where TimeGenerated > ago(Lookback)
+        | extend Name = tolower(tostring(split(Computer, ".")[0]))
+        | summarize arg_max(TimeGenerated, OSType, ComputerIP, ResourceGroup) by Name
+        | project Name, LastSeen = TimeGenerated, OS = OSType, IP = ComputerIP,
+                  Source = "Heartbeat (Azure Monitor agent)", Detail = strcat("RG: ", ResourceGroup)),
+    (DeviceInfo
+        | where TimeGenerated > ago(Lookback)
+        | where isnotempty(OnboardingStatus) and OnboardingStatus != "Onboarded"
+        | extend Name = tolower(tostring(split(DeviceName, ".")[0]))
+        | summarize arg_max(TimeGenerated, OSPlatform, OnboardingStatus, DeviceType, PublicIP) by Name
+        | project Name, LastSeen = TimeGenerated, OS = OSPlatform, IP = PublicIP,
+                  Source = "Defender device discovery", Detail = strcat(OnboardingStatus, " | ", DeviceType))
+    | where Name !in (MDE)
+    | where isempty(TargetDevice) or Name has tolower(TargetDevice)
+    | summarize LastSeen = max(LastSeen), OS = take_any(OS), IP = take_any(IP),
+                Sources = make_set(Source), Detail = take_any(Detail) by Name;
+MDE
+| where isempty(TargetDevice) or Name has TargetDevice
+| summarize Devices = count()
+| extend Status = "✅ Onboarded"
+| union (NotOnboarded | summarize Devices = count() | extend Status = "⚠️ Not Onboarded")
+| where Devices > 0
+| project Status, Devices
 ```
 
-Requires the Azure Monitor Agent on the VMs. Devices are matched on short hostname, since Defender sometimes reports the full domain name. VMs without the agent won't appear.
+Uses the same 30-day logic as **Not Onboarded Devices**, so the orange slice matches that panel's row count.
 
 ## 🚫 Not Onboarded Devices
 Grid
