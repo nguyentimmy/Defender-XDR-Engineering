@@ -20,7 +20,7 @@ Deploy the whole workbook in one step with the ARM template, or paste the galler
 | --- | --- | --- |
 | 🖥️ **Detection Dashboard** | Passive, continuous | *What's alerting, how bad is it, and where?* |
 | 🛡️ **EDR Dashboard** (AV + ASR) | Passive, continuous | *What did Defender catch or block — did it clean up, and is the sensor even reporting?* |
-| 🔍 **Incident Response Dashboard** | On-demand, one entity | *What happened to this device or user, before and after compromise?* |
+| 🔍 **Incident Response Dashboard** | On-demand, one entity | *What happened to this device, user or email, before and after compromise?* |
 | 📊 **KPI Metrics** | Retrospective | *How fast and how accurately is the SOC responding?* |
 | 🎯 **Threat Hunting** | Active, daily | *What's happening that nothing caught yet?* |
 | 📡 **SIEM Dashboard** | Passive, continuous | *Is the data we detect on still arriving, on time and within budget?* |
@@ -43,7 +43,7 @@ Panels are parameterized — **Hostname** + **Time Range** (plus **User** where 
          A device or user shows up repeatedly, or a hunt hit
          looks worth escalating
                         ↓
-        🔍 Incident Response Dashboard (Device / User Investigation, Data Exfil)
+        🔍 Incident Response Dashboard (Device / User / Email Investigation, Data Exfil)
 
 📊 KPI Metrics         ─  looks back at how all of the above was handled
 
@@ -97,7 +97,7 @@ Panels are parameterized — **Hostname** + **Time Range** (plus **User** where 
 
 ## 🔍 Incident Response Dashboard
 
-**Purpose: on-demand investigation of one device or user, before, during and after a compromise.** Pick an entity and a time range and get one risk-scored, chronological timeline, with no query editing. Pages: [Device Investigation](Incident%20Response%20Dashboard/Device%20Investigation.md), [User Investigation](Incident%20Response%20Dashboard/User%20Investigation.md) and [Data Exfil](Incident%20Response%20Dashboard/Data%20Exfil.md).
+**Purpose: on-demand investigation of one device, user or email, before, during and after a compromise.** Pick an entity and a time range and get one risk-scored, chronological timeline, with no query editing. Pages: [Device Investigation](Incident%20Response%20Dashboard/Device%20Investigation.md), [User Investigation](Incident%20Response%20Dashboard/User%20Investigation.md), [Email Investigation](Incident%20Response%20Dashboard/Email%20Investigation.md) and [Data Exfil](Incident%20Response%20Dashboard/Data%20Exfil.md).
 
 Every Device and User row is tagged with a **Phase**:
 
@@ -109,6 +109,7 @@ Every Device and User row is tagged with a **Phase**:
 
 - **🖥️ Device Investigation** — targeting and attempts, initial access, persistence, credential access, evasion, ransomware prep, discovery, lateral movement, egress, backdoors, remote tools and Defender detections. Context panels: Device Info, Processes, Details, IOC
 - **👤 User Investigation** — phishing clicks, token replay, risky and unusual sign-ins, malicious IPs, MFA and password changes, roles, OAuth consent, mailbox rules, delegation and export. Panels: Sign-In Activity, Phishing Received, Containment Status, User Info, Apps, IPs & Locations, Devices
+- **📧 Email Investigation** — scope one email or campaign by sender, recipient, subject or message ID: who got it, who clicked, what's still in an inbox, URLs, attachments that reached a device, ZAP and admin removals, and the sender's 30-day profile. Panels: Email Summary, Delivery Over Time, Recipients, Messages, URLs, Attachments, Clicks, Post-Delivery Actions, Sender Profile
 - **📤 Data Exfil** — file-sharing and paste uploads, exfil tooling, mass archiving, removable media, bulk cloud download, outbound attachments, forwarding rules and connection fan-out
 
 > 💡 **The pages pivot into each other.** A risky sign-in names a device; a compromised endpoint names a logged-in account; either one showing staging leads to Data Exfil. Start with whichever entity you have and follow the trail.
@@ -187,7 +188,8 @@ Neither replaces the other. Alerts and EDR tell you protection is working; Threa
 | A user is getting MFA-bombed or signed in from a bad IP | 🎯 Threat Hunting (User Hunts) |
 | Reporting on response times or analyst workload | 📊 KPI Metrics |
 | A connector, agent or table went quiet, or ingestion cost jumped | 📡 SIEM Dashboard |
-| An alert fired on a device, or a user reported phishing | 🔍 Incident Response Dashboard |
+| An alert fired on a device | 🔍 Incident Response Dashboard (Device Investigation) |
+| A user reported phishing, or a campaign needs scoping | 🔍 Incident Response Dashboard (Email Investigation) |
 | Suspected data theft by a user or device | 🔍 Incident Response Dashboard (Data Exfil) |
 
 ---

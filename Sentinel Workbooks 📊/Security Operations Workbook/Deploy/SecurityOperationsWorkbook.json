@@ -1010,6 +1010,14 @@
                   "style": "link"
                 },
                 {
+                  "id": "386a1296-d640-5803-82a0-01978182cd6a",
+                  "cellValue": "irView",
+                  "linkTarget": "parameter",
+                  "linkLabel": "📧 Email Investigation",
+                  "subTarget": "email",
+                  "style": "link"
+                },
+                {
                   "id": "30a9973b-465d-53c8-a1ec-1e29ac080ec1",
                   "cellValue": "irView",
                   "linkTarget": "parameter",
@@ -1295,6 +1303,248 @@
               "value": "user"
             },
             "name": "ir-user-group"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 9,
+                  "content": {
+                    "version": "KqlParameterItem/1.0",
+                    "crossComponentResources": [],
+                    "parameters": [
+                      {
+                        "id": "bdad6840-0d47-5146-b064-1deaf6207f61",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "EmailSender",
+                        "label": "Sender",
+                        "type": 1,
+                        "description": "Sender address, domain or display name (contains).",
+                        "value": "",
+                        "timeContext": {
+                          "durationMs": 86400000
+                        }
+                      },
+                      {
+                        "id": "2ae16d1c-13e1-5724-849e-4601c1a09766",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "EmailRecipient",
+                        "label": "Recipient",
+                        "type": 1,
+                        "description": "Recipient address or domain (contains).",
+                        "value": "",
+                        "timeContext": {
+                          "durationMs": 86400000
+                        }
+                      },
+                      {
+                        "id": "fc824f21-bec1-5c22-962e-e0053da6e321",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "EmailSubject",
+                        "label": "Subject",
+                        "type": 1,
+                        "description": "Subject or part of it (contains).",
+                        "value": "",
+                        "timeContext": {
+                          "durationMs": 86400000
+                        }
+                      },
+                      {
+                        "id": "28e974d2-c9cd-5b4d-9e21-7ca56e75a35a",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "EmailMessageId",
+                        "label": "Message ID",
+                        "type": 1,
+                        "description": "NetworkMessageId or InternetMessageId.",
+                        "value": "",
+                        "timeContext": {
+                          "durationMs": 86400000
+                        }
+                      }
+                    ],
+                    "style": "pills",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces"
+                  },
+                  "name": "ir-email-params"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let Sender = trim(@\"\\s+\", \"{EmailSender:escape}\");\nlet Recipient = trim(@\"\\s+\", \"{EmailRecipient:escape}\");\nlet SubjectText = trim(@\"\\s+\", \"{EmailSubject:escape}\");\nlet MessageId = trim(@\"[\\s<>]+\", \"{EmailMessageId:escape}\");\nlet Msgs = EmailEvents\n    | where TimeGenerated {TimeRange}\n    | where isnotempty(Sender) or isnotempty(Recipient) or isnotempty(SubjectText) or isnotempty(MessageId)\n    | where isempty(Sender) or SenderFromAddress contains Sender or SenderMailFromAddress contains Sender or SenderDisplayName contains Sender\n    | where isempty(Recipient) or RecipientEmailAddress contains Recipient\n    | where isempty(SubjectText) or Subject contains SubjectText\n    | where isempty(MessageId) or NetworkMessageId == MessageId or InternetMessageId contains MessageId;\nlet Ids = Msgs | distinct NetworkMessageId;\nlet C = toscalar(UrlClickEvents\n    | where TimeGenerated between ({TimeRange:start} .. now())\n    | where NetworkMessageId in (Ids)\n    | summarize Clicks = count(), Reached = countif(ActionType == \"ClickAllowed\" or IsClickedThrough == true)\n    | project pack_all());\nlet Removed = EmailPostDeliveryEvents\n    | where TimeGenerated between ({TimeRange:start} .. now())\n    | where NetworkMessageId in (Ids)\n    | where Action matches regex \"(?i)delete|junk|quarantine\"\n    | distinct NetworkMessageId, RecipientEmailAddress = tolower(RecipientEmailAddress)\n    | extend IsRemoved = true;\nMsgs\n| extend RecipientEmailAddress = tolower(RecipientEmailAddress)\n| lookup kind=leftouter Removed on NetworkMessageId, RecipientEmailAddress\n| extend IsRemoved = coalesce(IsRemoved, false), IsThreat = isnotempty(ThreatTypes)\n| summarize Messages = dcount(NetworkMessageId), Recipients = dcount(RecipientEmailAddress), Senders = dcount(SenderFromAddress),\n            Threats = countif(IsThreat),\n            Inbox = countif(DeliveryAction == \"Delivered\" and DeliveryLocation has \"Inbox\"),\n            Junk = countif(DeliveryLocation has \"Junk\"),\n            Blocked = countif(DeliveryAction == \"Blocked\"),\n            Removed = countif(IsRemoved),\n            ThreatInInbox = countif(IsThreat and DeliveryAction == \"Delivered\" and DeliveryLocation has \"Inbox\" and not(IsRemoved))\n| extend Clicks = coalesce(tolong(C.Clicks), 0), Reached = coalesce(tolong(C.Reached), 0)\n| project Rows = pack_array(\n    bag_pack(\"Metric\", \"📨 Messages\", \"Value\", Messages),\n    bag_pack(\"Metric\", \"👥 Recipients\", \"Value\", Recipients),\n    bag_pack(\"Metric\", \"📤 Senders\", \"Value\", Senders),\n    bag_pack(\"Metric\", \"☣️ Threat Deliveries\", \"Value\", Threats),\n    bag_pack(\"Metric\", \"📥 In Inbox\", \"Value\", Inbox),\n    bag_pack(\"Metric\", \"🗑️ In Junk\", \"Value\", Junk),\n    bag_pack(\"Metric\", \"⛔ Blocked\", \"Value\", Blocked),\n    bag_pack(\"Metric\", \"🧹 Removed After Delivery\", \"Value\", Removed),\n    bag_pack(\"Metric\", \"⚠️ Threats Still in Inbox\", \"Value\", ThreatInInbox),\n    bag_pack(\"Metric\", \"🖱️ Clicks\", \"Value\", Clicks),\n    bag_pack(\"Metric\", \"🔓 Clicks That Reached the URL\", \"Value\", Reached))\n| mv-expand Rows\n| project Metric = tostring(Rows.Metric), Value = tolong(Rows.Value)",
+                    "size": 1,
+                    "title": "📊 Email Summary",
+                    "timeContextFromParameter": "TimeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "tiles",
+                    "tileSettings": {
+                      "titleContent": {
+                        "columnMatch": "Metric",
+                        "formatter": 1
+                      },
+                      "leftContent": {
+                        "columnMatch": "Value",
+                        "formatter": 1
+                      },
+                      "showBorder": true
+                    }
+                  },
+                  "name": "ir-email-01"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let Sender = trim(@\"\\s+\", \"{EmailSender:escape}\");\nlet Recipient = trim(@\"\\s+\", \"{EmailRecipient:escape}\");\nlet SubjectText = trim(@\"\\s+\", \"{EmailSubject:escape}\");\nlet MessageId = trim(@\"[\\s<>]+\", \"{EmailMessageId:escape}\");\nEmailEvents\n| where TimeGenerated {TimeRange}\n| where isnotempty(Sender) or isnotempty(Recipient) or isnotempty(SubjectText) or isnotempty(MessageId)\n| where isempty(Sender) or SenderFromAddress contains Sender or SenderMailFromAddress contains Sender or SenderDisplayName contains Sender\n| where isempty(Recipient) or RecipientEmailAddress contains Recipient\n| where isempty(SubjectText) or Subject contains SubjectText\n| where isempty(MessageId) or NetworkMessageId == MessageId or InternetMessageId contains MessageId\n| extend Verdict = case(ThreatTypes has \"Malware\", \"Malware\", ThreatTypes has \"Phish\", \"Phish\", ThreatTypes has \"Spam\", \"Spam\", \"Clean\")\n| summarize Deliveries = count() by bin(TimeGenerated, {TimeRange:grain}), Verdict",
+                    "size": 1,
+                    "title": "📈 Delivery Over Time",
+                    "timeContextFromParameter": "TimeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "timechart"
+                  },
+                  "name": "ir-email-02",
+                  "customWidth": "50"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let Sender = trim(@\"\\s+\", \"{EmailSender:escape}\");\nlet Recipient = trim(@\"\\s+\", \"{EmailRecipient:escape}\");\nlet SubjectText = trim(@\"\\s+\", \"{EmailSubject:escape}\");\nlet MessageId = trim(@\"[\\s<>]+\", \"{EmailMessageId:escape}\");\nlet Msgs = EmailEvents\n    | where TimeGenerated {TimeRange}\n    | where isnotempty(Sender) or isnotempty(Recipient) or isnotempty(SubjectText) or isnotempty(MessageId)\n    | where isempty(Sender) or SenderFromAddress contains Sender or SenderMailFromAddress contains Sender or SenderDisplayName contains Sender\n    | where isempty(Recipient) or RecipientEmailAddress contains Recipient\n    | where isempty(SubjectText) or Subject contains SubjectText\n    | where isempty(MessageId) or NetworkMessageId == MessageId or InternetMessageId contains MessageId;\nlet Ids = Msgs | distinct NetworkMessageId;\nlet Clicks = UrlClickEvents\n    | where TimeGenerated between ({TimeRange:start} .. now())\n    | where NetworkMessageId in (Ids)\n    | summarize Clicks = count(),\n                Reached = countif(ActionType == \"ClickAllowed\" or IsClickedThrough == true),\n                LastClick = max(TimeGenerated)\n             by RecipientEmailAddress = tolower(AccountUpn);\nlet Removed = EmailPostDeliveryEvents\n    | where TimeGenerated between ({TimeRange:start} .. now())\n    | where NetworkMessageId in (Ids)\n    | where Action matches regex \"(?i)delete|junk|quarantine\"\n    | summarize Removed = dcount(NetworkMessageId), RemovedBy = make_set(ActionType, 3)\n             by RecipientEmailAddress = tolower(RecipientEmailAddress);\nMsgs\n| extend RecipientEmailAddress = tolower(RecipientEmailAddress)\n| summarize Messages = dcount(NetworkMessageId),\n            Threats = dcountif(NetworkMessageId, isnotempty(ThreatTypes)),\n            InInbox = dcountif(NetworkMessageId, DeliveryAction == \"Delivered\" and DeliveryLocation has \"Inbox\"),\n            Blocked = dcountif(NetworkMessageId, DeliveryAction == \"Blocked\"),\n            FirstReceived = min(TimeGenerated), LastReceived = max(TimeGenerated)\n         by RecipientEmailAddress\n| lookup kind=leftouter Clicks on RecipientEmailAddress\n| lookup kind=leftouter Removed on RecipientEmailAddress\n| extend Clicks = coalesce(Clicks, 0), Reached = coalesce(Reached, 0), Removed = coalesce(Removed, 0)\n| extend SevRank = case(Reached > 0, 1, Clicks > 0, 2, InInbox > Removed, 3, Removed > 0, 4, 5)\n| extend Status = case(SevRank == 1, \"🔴 Reached URL\", SevRank == 2, \"🟠 Click Blocked\", SevRank == 3, \"🟡 Still in Inbox\",\n                       SevRank == 4, \"🟢 Removed\", \"⚪ Junk / Blocked\")\n| sort by SevRank asc, Threats desc, LastReceived desc\n| project Status, RecipientEmailAddress, Messages, Threats, InInbox, Blocked, Removed, RemovedBy, Clicks, Reached, LastClick,\n          FirstReceived, LastReceived",
+                    "size": 0,
+                    "title": "👥 Recipients",
+                    "timeContextFromParameter": "TimeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "table",
+                    "gridSettings": {
+                      "filter": true,
+                      "rowLimit": 1000
+                    }
+                  },
+                  "name": "ir-email-03"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let Sender = trim(@\"\\s+\", \"{EmailSender:escape}\");\nlet Recipient = trim(@\"\\s+\", \"{EmailRecipient:escape}\");\nlet SubjectText = trim(@\"\\s+\", \"{EmailSubject:escape}\");\nlet MessageId = trim(@\"[\\s<>]+\", \"{EmailMessageId:escape}\");\nlet Msgs = EmailEvents\n    | where TimeGenerated {TimeRange}\n    | where isnotempty(Sender) or isnotempty(Recipient) or isnotempty(SubjectText) or isnotempty(MessageId)\n    | where isempty(Sender) or SenderFromAddress contains Sender or SenderMailFromAddress contains Sender or SenderDisplayName contains Sender\n    | where isempty(Recipient) or RecipientEmailAddress contains Recipient\n    | where isempty(SubjectText) or Subject contains SubjectText\n    | where isempty(MessageId) or NetworkMessageId == MessageId or InternetMessageId contains MessageId;\nlet Ids = Msgs | distinct NetworkMessageId;\nlet Clicks = UrlClickEvents\n    | where TimeGenerated between ({TimeRange:start} .. now())\n    | where NetworkMessageId in (Ids)\n    | summarize Clicks = count(), Reached = countif(ActionType == \"ClickAllowed\" or IsClickedThrough == true)\n             by NetworkMessageId, RecipientEmailAddress = tolower(AccountUpn);\nlet Post = EmailPostDeliveryEvents\n    | where TimeGenerated between ({TimeRange:start} .. now())\n    | where NetworkMessageId in (Ids)\n    | summarize PostDelivery = make_set(strcat(Action, \" (\", ActionType, \")\"), 3)\n             by NetworkMessageId, RecipientEmailAddress = tolower(RecipientEmailAddress);\nMsgs\n| extend RecipientEmailAddress = tolower(RecipientEmailAddress)\n| lookup kind=leftouter Clicks on NetworkMessageId, RecipientEmailAddress\n| lookup kind=leftouter Post on NetworkMessageId, RecipientEmailAddress\n| extend Clicks = coalesce(Clicks, 0), Reached = coalesce(Reached, 0), WasActioned = coalesce(array_length(PostDelivery), 0) > 0\n| extend Auth = parse_json(AuthenticationDetails)\n| extend SPF = tostring(Auth.SPF), DKIM = tostring(Auth.DKIM), DMARC = tostring(Auth.DMARC), CompAuth = tostring(Auth.CompAuth)\n| extend IsThreat = isnotempty(ThreatTypes)\n| extend SevRank = case(\n    IsThreat and Reached > 0, 1,\n    IsThreat and DeliveryAction == \"Delivered\" and DeliveryLocation has \"Inbox\" and not(WasActioned), 2,\n    IsThreat and DeliveryAction == \"Delivered\", 3,\n    IsThreat, 4,\n    5)\n| extend Severity = case(SevRank == 1, \"🔴 Threat Clicked\", SevRank == 2, \"🟠 Threat in Inbox\", SevRank == 3, \"🟡 Threat Delivered\",\n                         SevRank == 4, \"⚪ Threat Blocked\", \"🟢 No Threat Detected\")\n| sort by SevRank asc, TimeGenerated desc\n| project TimeGenerated, Severity, RecipientEmailAddress, SenderFromAddress, SenderMailFromAddress, SenderDisplayName, Subject,\n          EmailDirection, DeliveryAction, DeliveryLocation, ThreatTypes, DetectionMethods, SPF, DKIM, DMARC, CompAuth,\n          SenderIPv4, UrlCount, AttachmentCount, Clicks, Reached, PostDelivery, NetworkMessageId, InternetMessageId",
+                    "size": 0,
+                    "title": "📬 Messages",
+                    "timeContextFromParameter": "TimeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "table",
+                    "gridSettings": {
+                      "filter": true,
+                      "rowLimit": 1000
+                    }
+                  },
+                  "name": "ir-email-04"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let Sender = trim(@\"\\s+\", \"{EmailSender:escape}\");\nlet Recipient = trim(@\"\\s+\", \"{EmailRecipient:escape}\");\nlet SubjectText = trim(@\"\\s+\", \"{EmailSubject:escape}\");\nlet MessageId = trim(@\"[\\s<>]+\", \"{EmailMessageId:escape}\");\nlet Ids = EmailEvents\n    | where TimeGenerated {TimeRange}\n    | where isnotempty(Sender) or isnotempty(Recipient) or isnotempty(SubjectText) or isnotempty(MessageId)\n    | where isempty(Sender) or SenderFromAddress contains Sender or SenderMailFromAddress contains Sender or SenderDisplayName contains Sender\n    | where isempty(Recipient) or RecipientEmailAddress contains Recipient\n    | where isempty(SubjectText) or Subject contains SubjectText\n    | where isempty(MessageId) or NetworkMessageId == MessageId or InternetMessageId contains MessageId\n    | distinct NetworkMessageId;\nlet Clicks = UrlClickEvents\n    | where TimeGenerated between ({TimeRange:start} .. now())\n    | where NetworkMessageId in (Ids)\n    | summarize Clicks = count(),\n                Reached = countif(ActionType == \"ClickAllowed\" or IsClickedThrough == true),\n                BlockedClicks = countif(ActionType has \"Blocked\"),\n                Clickers = make_set(AccountUpn, 5)\n             by Url;\nEmailUrlInfo\n| where TimeGenerated {TimeRange}\n| where NetworkMessageId in (Ids)\n| summarize Messages = dcount(NetworkMessageId), FoundIn = make_set(UrlLocation, 3) by Url, UrlDomain\n| lookup kind=leftouter Clicks on Url\n| extend Clicks = coalesce(Clicks, 0), Reached = coalesce(Reached, 0), BlockedClicks = coalesce(BlockedClicks, 0)\n| extend Status = case(Reached > 0, \"🔴 Reached\", BlockedClicks > 0, \"🟠 Click Blocked\", Clicks > 0, \"🟡 Clicked\", \"⚪ Not Clicked\")\n| sort by Reached desc, Clicks desc, Messages desc\n| project Status, UrlDomain, Url, FoundIn, Messages, Clicks, Reached, BlockedClicks, Clickers",
+                    "size": 0,
+                    "title": "🔗 URLs",
+                    "timeContextFromParameter": "TimeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "table",
+                    "gridSettings": {
+                      "filter": true,
+                      "rowLimit": 1000
+                    }
+                  },
+                  "name": "ir-email-05"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let Sender = trim(@\"\\s+\", \"{EmailSender:escape}\");\nlet Recipient = trim(@\"\\s+\", \"{EmailRecipient:escape}\");\nlet SubjectText = trim(@\"\\s+\", \"{EmailSubject:escape}\");\nlet MessageId = trim(@\"[\\s<>]+\", \"{EmailMessageId:escape}\");\nlet Ids = EmailEvents\n    | where TimeGenerated {TimeRange}\n    | where isnotempty(Sender) or isnotempty(Recipient) or isnotempty(SubjectText) or isnotempty(MessageId)\n    | where isempty(Sender) or SenderFromAddress contains Sender or SenderMailFromAddress contains Sender or SenderDisplayName contains Sender\n    | where isempty(Recipient) or RecipientEmailAddress contains Recipient\n    | where isempty(SubjectText) or Subject contains SubjectText\n    | where isempty(MessageId) or NetworkMessageId == MessageId or InternetMessageId contains MessageId\n    | distinct NetworkMessageId;\nlet Files = EmailAttachmentInfo\n    | where TimeGenerated {TimeRange}\n    | where NetworkMessageId in (Ids)\n    | summarize Messages = dcount(NetworkMessageId), Recipients = dcount(RecipientEmailAddress),\n                ThreatTypes = make_set_if(ThreatTypes, isnotempty(ThreatTypes), 3),\n                DetectionMethods = make_set_if(DetectionMethods, isnotempty(DetectionMethods), 3)\n             by FileName, FileType, SHA256;\nlet Hashes = Files | where isnotempty(SHA256) | distinct SHA256;\nlet OnDisk = DeviceFileEvents\n    | where TimeGenerated between ({TimeRange:start} .. now())\n    | where SHA256 in (Hashes)\n    | summarize DevicesWithFile = dcount(DeviceName), Devices = make_set(DeviceName, 5) by SHA256;\nlet Ran = DeviceProcessEvents\n    | where TimeGenerated between ({TimeRange:start} .. now())\n    | where SHA256 in (Hashes)\n    | summarize DevicesExecuted = dcount(DeviceName) by SHA256;\nFiles\n| lookup kind=leftouter OnDisk on SHA256\n| lookup kind=leftouter Ran on SHA256\n| extend DevicesWithFile = coalesce(DevicesWithFile, 0), DevicesExecuted = coalesce(DevicesExecuted, 0)\n| extend RiskRank = case(DevicesExecuted > 0, 1, DevicesWithFile > 0, 2, array_length(ThreatTypes) > 0, 3, 4)\n| extend Risk = case(RiskRank == 1, \"🔴 Executed\", RiskRank == 2, \"🟠 On Disk\", RiskRank == 3, \"🟡 Malicious, Not on Disk\", \"🟢 No Threat Detected\")\n| sort by RiskRank asc, Messages desc\n| project Risk, FileName, FileType, SHA256, Messages, Recipients, ThreatTypes, DetectionMethods, DevicesWithFile, DevicesExecuted, Devices",
+                    "size": 0,
+                    "title": "📎 Attachments",
+                    "timeContextFromParameter": "TimeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "table",
+                    "gridSettings": {
+                      "filter": true,
+                      "rowLimit": 1000
+                    }
+                  },
+                  "name": "ir-email-06"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let Sender = trim(@\"\\s+\", \"{EmailSender:escape}\");\nlet Recipient = trim(@\"\\s+\", \"{EmailRecipient:escape}\");\nlet SubjectText = trim(@\"\\s+\", \"{EmailSubject:escape}\");\nlet MessageId = trim(@\"[\\s<>]+\", \"{EmailMessageId:escape}\");\nlet Ids = EmailEvents\n    | where TimeGenerated {TimeRange}\n    | where isnotempty(Sender) or isnotempty(Recipient) or isnotempty(SubjectText) or isnotempty(MessageId)\n    | where isempty(Sender) or SenderFromAddress contains Sender or SenderMailFromAddress contains Sender or SenderDisplayName contains Sender\n    | where isempty(Recipient) or RecipientEmailAddress contains Recipient\n    | where isempty(SubjectText) or Subject contains SubjectText\n    | where isempty(MessageId) or NetworkMessageId == MessageId or InternetMessageId contains MessageId\n    | distinct NetworkMessageId;\nUrlClickEvents\n| where TimeGenerated between ({TimeRange:start} .. now())\n| where NetworkMessageId in (Ids)\n| extend Result = case(IsClickedThrough == true, \"🔴 Clicked Through Warning\", ActionType == \"ClickAllowed\", \"🟠 Allowed\",\n                       ActionType has \"Blocked\", \"🟢 Blocked\", ActionType)\n| sort by TimeGenerated desc\n| project TimeGenerated, Result, AccountUpn, Url, ActionType, IsClickedThrough, IPAddress, Workload, ThreatTypes, DetectionMethods, NetworkMessageId",
+                    "size": 0,
+                    "title": "🖱️ Clicks",
+                    "timeContextFromParameter": "TimeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "table",
+                    "gridSettings": {
+                      "filter": true,
+                      "rowLimit": 1000
+                    }
+                  },
+                  "name": "ir-email-07"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let Sender = trim(@\"\\s+\", \"{EmailSender:escape}\");\nlet Recipient = trim(@\"\\s+\", \"{EmailRecipient:escape}\");\nlet SubjectText = trim(@\"\\s+\", \"{EmailSubject:escape}\");\nlet MessageId = trim(@\"[\\s<>]+\", \"{EmailMessageId:escape}\");\nlet Ids = EmailEvents\n    | where TimeGenerated {TimeRange}\n    | where isnotempty(Sender) or isnotempty(Recipient) or isnotempty(SubjectText) or isnotempty(MessageId)\n    | where isempty(Sender) or SenderFromAddress contains Sender or SenderMailFromAddress contains Sender or SenderDisplayName contains Sender\n    | where isempty(Recipient) or RecipientEmailAddress contains Recipient\n    | where isempty(SubjectText) or Subject contains SubjectText\n    | where isempty(MessageId) or NetworkMessageId == MessageId or InternetMessageId contains MessageId\n    | distinct NetworkMessageId;\nEmailPostDeliveryEvents\n| where TimeGenerated between ({TimeRange:start} .. now())\n| where NetworkMessageId in (Ids)\n| sort by TimeGenerated desc\n| project TimeGenerated, RecipientEmailAddress, Action, ActionType, ActionTrigger, ActionResult, DeliveryLocation,\n          ThreatTypes, DetectionMethods, NetworkMessageId",
+                    "size": 0,
+                    "title": "🧹 Post-Delivery Actions",
+                    "timeContextFromParameter": "TimeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "table",
+                    "gridSettings": {
+                      "filter": true,
+                      "rowLimit": 1000
+                    }
+                  },
+                  "name": "ir-email-08"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let Sender = trim(@\"\\s+\", \"{EmailSender:escape}\");\nlet Recipient = trim(@\"\\s+\", \"{EmailRecipient:escape}\");\nlet SubjectText = trim(@\"\\s+\", \"{EmailSubject:escape}\");\nlet MessageId = trim(@\"[\\s<>]+\", \"{EmailMessageId:escape}\");\nlet Senders = EmailEvents\n    | where TimeGenerated {TimeRange}\n    | where isnotempty(Sender) or isnotempty(Recipient) or isnotempty(SubjectText) or isnotempty(MessageId)\n    | where isempty(Sender) or SenderFromAddress contains Sender or SenderMailFromAddress contains Sender or SenderDisplayName contains Sender\n    | where isempty(Recipient) or RecipientEmailAddress contains Recipient\n    | where isempty(SubjectText) or Subject contains SubjectText\n    | where isempty(MessageId) or NetworkMessageId == MessageId or InternetMessageId contains MessageId\n    | distinct SenderFromAddress;\nEmailEvents\n| where TimeGenerated > ago(30d)\n| where SenderFromAddress in (Senders)\n| extend DMARC = tostring(parse_json(AuthenticationDetails).DMARC)\n| summarize FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated),\n            Messages = dcount(NetworkMessageId), Recipients = dcount(RecipientEmailAddress),\n            Threats = dcountif(NetworkMessageId, isnotempty(ThreatTypes)),\n            DmarcFails = countif(DMARC == \"fail\"),\n            DisplayNames = make_set(SenderDisplayName, 5), MailFromDomains = make_set(SenderMailFromDomain, 5),\n            SenderIPs = make_set(SenderIPv4, 5), Directions = make_set(EmailDirection, 3)\n         by SenderFromAddress, SenderFromDomain\n| extend Flags = strcat_array(set_difference(pack_array(\n        iff(FirstSeen > ago(7d), \"🆕 New sender\", \"\"),\n        iff(DmarcFails > 0, \"❌ DMARC fail\", \"\"),\n        iff(array_length(set_difference(MailFromDomains, pack_array(SenderFromDomain))) > 0, \"🔀 MailFrom mismatch\", \"\"),\n        iff(array_length(DisplayNames) > 1, \"🎭 Multiple display names\", \"\"),\n        iff(Threats > 0, \"☣️ Sent threats\", \"\")), dynamic([\"\"])), \", \")\n| sort by Threats desc, Recipients desc\n| take 50\n| project SenderFromAddress, Flags, FirstSeen, LastSeen, Messages, Recipients, Threats, DmarcFails, DisplayNames,\n          MailFromDomains, SenderIPs, Directions",
+                    "size": 0,
+                    "title": "📤 Sender Profile",
+                    "timeContextFromParameter": "TimeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "table",
+                    "gridSettings": {
+                      "filter": true,
+                      "rowLimit": 1000
+                    }
+                  },
+                  "name": "ir-email-09"
+                }
+              ]
+            },
+            "conditionalVisibility": {
+              "parameterName": "irView",
+              "comparison": "isEqualTo",
+              "value": "email"
+            },
+            "name": "ir-email-group"
           },
           {
             "type": 12,
