@@ -33,6 +33,7 @@ TABS = [
     ("ir", "🔍 Incident Response Dashboard", [
         ("device", "🖥️ Device Investigation", "Incident Response Dashboard/Device Investigation.md"),
         ("user", "👤 User Investigation", "Incident Response Dashboard/User Investigation.md"),
+        ("email", "📧 Email Investigation", "Incident Response Dashboard/Email Investigation.md"),
         ("exfil", "📤 Data Exfil", "Incident Response Dashboard/Data Exfil.md"),
     ]),
     ("kpi", "📊 KPI Metrics Dashboard", [
@@ -186,6 +187,34 @@ OWNER_QUERY = """SecurityIncident
 | sort by OwnerName asc"""
 
 
+# Parameters that only apply to one page, shown at the top of that page's group.
+PAGE_PARAMS = {
+    "Incident Response Dashboard/Email Investigation.md": [
+        ("EmailSender", "Sender", "Sender address, domain or display name (contains)."),
+        ("EmailRecipient", "Recipient", "Recipient address or domain (contains)."),
+        ("EmailSubject", "Subject", "Subject or part of it (contains)."),
+        ("EmailMessageId", "Message ID", "NetworkMessageId or InternetMessageId."),
+    ],
+}
+
+
+def page_parameters_item(name, params):
+    return {
+        "type": 9,
+        "content": {
+            "version": "KqlParameterItem/1.0",
+            "crossComponentResources": [],
+            "parameters": [{"id": sid("param", p), "version": "KqlParameterItem/1.0", "name": p, "label": label,
+                            "type": 1, "description": desc, "value": "", "timeContext": {"durationMs": 86400000}}
+                           for p, label, desc in params],
+            "style": "pills",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces",
+        },
+        "name": name,
+    }
+
+
 def parameters_item():
     def text(name, label, desc):
         return {"id": sid("param", name), "version": "KqlParameterItem/1.0", "name": name, "label": label,
@@ -236,6 +265,8 @@ def build():
             panels = parse_panels(ROOT / rel, page_label.split(" ", 1)[1])
             counts[rel] = len(panels)
             page_items = [query_item(tab, page, i, p) for i, p in enumerate(panels, 1)]
+            if rel in PAGE_PARAMS:
+                page_items.insert(0, page_parameters_item(f"{tab}-{page}-params", PAGE_PARAMS[rel]))
             if len(pages) > 1:
                 tab_items.append(group_item(f"{tab}-{page}-group", page_items, sub_param, page))
             else:

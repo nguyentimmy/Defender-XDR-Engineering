@@ -12,7 +12,7 @@ Everything lives in one Microsoft Sentinel / Defender XDR workbook: the **[📊 
 | --- | --- |
 | 🖥️ **Detection Dashboard** | *What's alerting, and which incidents are open?* |
 | 🛡️ **EDR Dashboard** | *What did Defender catch or block, and is the sensor reporting?* |
-| 🔍 **Incident Response Dashboard** | *What happened to this device or user, before and after compromise?* |
+| 🔍 **Incident Response Dashboard** | *What happened to this device, user or email, before and after compromise?* |
 | 📊 **KPI Metrics Dashboard** | *How fast and how accurately is the SOC responding?* |
 | 🎯 **Threat Hunt Dashboard** | *What's happening that nothing caught yet?* |
 | 📡 **SIEM Dashboard** | *Is the data we detect on still arriving, on time and within budget?* |
@@ -41,7 +41,8 @@ Everything lives in one Microsoft Sentinel / Defender XDR workbook: the **[📊 
 | --- | --- |
 | Morning check, nothing specific | 🖥️ Detection Dashboard |
 | An alert fired on a device | 🔍 Incident Response Dashboard (Device Investigation) |
-| A user reported a phishing email | 🔍 Incident Response Dashboard (User Investigation) |
+| A user reported a phishing email | 🔍 Incident Response Dashboard (Email Investigation) |
+| A user's account looks compromised | 🔍 Incident Response Dashboard (User Investigation) |
 | Suspected data theft by a user or device | 🔍 Incident Response Dashboard (Data Exfil) |
 | Checking whether protection is disabled anywhere | 🛡️ EDR Dashboard |
 | Deciding which ASR rules to move from Audit to Block | 🛡️ EDR Dashboard |
