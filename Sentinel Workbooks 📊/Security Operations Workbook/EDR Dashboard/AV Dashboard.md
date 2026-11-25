@@ -14,11 +14,12 @@ Sentinel workbook for Microsoft Defender antivirus detections, EDR tampering and
 | 📈 AV Detections Over Time | Time chart | Detections per hour for the top 5 threats, everything else grouped as Other |
 | 🧬 Top Detected Threats | Grid | Top 10 threats with device count, remediation and first/last seen |
 | 🥷 EDR Evasions | Grid | BYOVD drivers, EDR-killer tools, EDR process/service kills, Defender tampering, Safe Mode abuse, log tampering |
-| 💓 Defender Health | Grid | Onboarded devices whose sensor isn't Active, with tamper protection state (an empty result means everything is healthy) |
-| 📊 Sensor Coverage Tiles | Tiles | Onboarded, active, inactive, impaired devices and coverage % |
+| 💓 Defender Health | Grid | Onboarded devices whose sensor isn't Active, plus devices with no sensor at all (Not Onboarded), with tamper protection state |
+| 📊 Sensor Coverage Tiles | Tiles | Total, onboarded, active, inactive, impaired and not onboarded devices, and coverage % of all devices |
 | 🟢 Active vs Inactive Sensors | Pie chart | Onboarded devices split by sensor health state |
 | 🥧 Onboarding Status | Pie chart | Onboarded vs. devices found by device discovery that aren't onboarded |
-| 🧩 Onboarded vs Not Onboarded | Pie chart | VMs sending Azure Monitor heartbeats compared against Defender's onboarded devices |
+| 🧩 Onboarded vs Not Onboarded | Pie chart | Devices with a Defender sensor vs. machines without one (heartbeat + device discovery) |
+| 🚫 Not Onboarded Devices | Grid | Every machine without a Defender sensor, from Azure Monitor heartbeats and Defender device discovery |
 
 **Notes**
 - AV panels use `AntivirusDetection` events only. `AntivirusReport` re-reports threats that were already detected, so it's left out to avoid double counting.
@@ -376,6 +377,29 @@ Grid
 
 ```kql
 let TargetDevice = trim(" ", "{DeviceName}");
+let Lookback = 30d;
+let MDE = DeviceInfo
+    | where TimeGenerated > ago(Lookback)
+    | where OnboardingStatus == "Onboarded" or isnotempty(ClientVersion)
+    | summarize by Name = tolower(tostring(split(DeviceName, ".")[0]));
+let NotOnboarded = union isfuzzy=true
+    (Heartbeat
+        | where TimeGenerated > ago(Lookback)
+        | extend Name = tolower(tostring(split(Computer, ".")[0]))
+        | summarize arg_max(TimeGenerated, OSType, ComputerIP, ResourceGroup) by Name
+        | project Name, LastSeen = TimeGenerated, OS = OSType, IP = ComputerIP,
+                  Source = "Heartbeat (Azure Monitor agent)", Detail = strcat("RG: ", ResourceGroup)),
+    (DeviceInfo
+        | where TimeGenerated > ago(Lookback)
+        | where isnotempty(OnboardingStatus) and OnboardingStatus != "Onboarded"
+        | extend Name = tolower(tostring(split(DeviceName, ".")[0]))
+        | summarize arg_max(TimeGenerated, OSPlatform, OnboardingStatus, DeviceType, PublicIP) by Name
+        | project Name, LastSeen = TimeGenerated, OS = OSPlatform, IP = PublicIP,
+                  Source = "Defender device discovery", Detail = strcat(OnboardingStatus, " | ", DeviceType))
+    | where Name !in (MDE)
+    | where isempty(TargetDevice) or Name has tolower(TargetDevice)
+    | summarize LastSeen = max(LastSeen), OS = take_any(OS), IP = take_any(IP),
+                Sources = make_set(Source), Detail = take_any(Detail) by Name;
 let TP = DeviceRegistryEvents
     | where TimeGenerated > ago(90d)
     | where isempty(TargetDevice) or DeviceName has TargetDevice
@@ -383,49 +407,81 @@ let TP = DeviceRegistryEvents
     | where RegistryValueName == "TamperProtection"
     | summarize arg_max(TimeGenerated, RegistryValueData) by DeviceId
     | project DeviceId, TPValue = RegistryValueData, TPChanged = TimeGenerated;
-DeviceInfo
-| where TimeGenerated {TimeRange}
-| where isempty(TargetDevice) or DeviceName has TargetDevice
-| summarize arg_max(TimeGenerated, OnboardingStatus, SensorHealthState, OSPlatform) by DeviceName, DeviceId
-| where OnboardingStatus == "Onboarded"
-| where SensorHealthState !in~ ("Active", "")
-| join kind=leftouter TP on DeviceId
-| extend TamperProtection = case(
-    TPValue == "5", "✅ On",
-    TPValue in ("0", "4"), "⛔ Off",
-    OSPlatform !startswith "Windows", "N/A",
-    "❔ Unknown")
-| extend Severity = case(
-    SensorHealthState has_any ("Inactive", "Misconfigured") or TamperProtection == "⛔ Off", "🔴 Critical",
-    SensorHealthState has "ImpairedCommunication", "🟠 High",
-    "🟡 Medium"
-)
-| project LastSeen = TimeGenerated, Severity, DeviceName, OSPlatform, SensorHealthState,
-          TamperProtection, TPChanged, OnboardingStatus, DeviceId
+let Unhealthy = DeviceInfo
+    | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
+    | summarize arg_max(TimeGenerated, OnboardingStatus, SensorHealthState, OSPlatform) by DeviceName, DeviceId
+    | where OnboardingStatus == "Onboarded"
+    | where SensorHealthState !in~ ("Active", "")
+    | join kind=leftouter TP on DeviceId
+    | extend TamperProtection = case(
+        TPValue == "5", "✅ On",
+        TPValue in ("0", "4"), "⛔ Off",
+        OSPlatform !startswith "Windows", "N/A",
+        "❔ Unknown")
+    | extend Severity = case(
+        SensorHealthState has_any ("Inactive", "Misconfigured") or TamperProtection == "⛔ Off", "🔴 Critical",
+        SensorHealthState has "ImpairedCommunication", "🟠 High",
+        "🟡 Medium")
+    | project LastSeen = TimeGenerated, Severity, DeviceName, OSPlatform, SensorHealthState,
+              TamperProtection, TPChanged, OnboardingStatus, Source = "Defender", DeviceId;
+union
+    Unhealthy,
+    (NotOnboarded
+        | project LastSeen, Severity = "🔴 Critical", DeviceName = Name, OSPlatform = OS, SensorHealthState = "No sensor",
+                  TamperProtection = "N/A", OnboardingStatus = "⚠️ Not Onboarded", Source = strcat_array(Sources, ", "))
 | sort by Severity asc, LastSeen asc
 ```
 
 `TamperProtection` comes from registry changes in the last 90 days. A device that hasn't changed the setting shows **Unknown**.
+
+**⚠️ Not Onboarded** rows have no Defender sensor at all, using the same 30-day logic as the [Not Onboarded Devices](#-not-onboarded-devices) panel.
 
 ## 📊 Sensor Coverage Tiles
 Tiles: Title = `Metric`, Left = `Value`
 
 ```kql
 let TargetDevice = trim(" ", "{DeviceName}");
+let Lookback = 30d;
+let MDE = DeviceInfo
+    | where TimeGenerated > ago(Lookback)
+    | where OnboardingStatus == "Onboarded" or isnotempty(ClientVersion)
+    | summarize by Name = tolower(tostring(split(DeviceName, ".")[0]));
+let NotOnboarded = union isfuzzy=true
+    (Heartbeat
+        | where TimeGenerated > ago(Lookback)
+        | extend Name = tolower(tostring(split(Computer, ".")[0]))
+        | summarize arg_max(TimeGenerated, OSType, ComputerIP, ResourceGroup) by Name
+        | project Name, LastSeen = TimeGenerated, OS = OSType, IP = ComputerIP,
+                  Source = "Heartbeat (Azure Monitor agent)", Detail = strcat("RG: ", ResourceGroup)),
+    (DeviceInfo
+        | where TimeGenerated > ago(Lookback)
+        | where isnotempty(OnboardingStatus) and OnboardingStatus != "Onboarded"
+        | extend Name = tolower(tostring(split(DeviceName, ".")[0]))
+        | summarize arg_max(TimeGenerated, OSPlatform, OnboardingStatus, DeviceType, PublicIP) by Name
+        | project Name, LastSeen = TimeGenerated, OS = OSPlatform, IP = PublicIP,
+                  Source = "Defender device discovery", Detail = strcat(OnboardingStatus, " | ", DeviceType))
+    | where Name !in (MDE)
+    | where isempty(TargetDevice) or Name has tolower(TargetDevice)
+    | summarize LastSeen = max(LastSeen), OS = take_any(OS), IP = take_any(IP),
+                Sources = make_set(Source), Detail = take_any(Detail) by Name;
 let H = DeviceInfo
     | where TimeGenerated {TimeRange}
     | where isempty(TargetDevice) or DeviceName has TargetDevice
     | summarize arg_max(TimeGenerated, OnboardingStatus, SensorHealthState) by DeviceId
     | where OnboardingStatus == "Onboarded";
-let Total = toscalar(H | count);
+let Missing = toscalar(NotOnboarded | count);
+let Total = toscalar(H | count) + Missing;
 union
+    (print Value = Total | extend Metric = "🖥️ Total Devices", Order = 0),
     (H | summarize Value = count() | extend Metric = "💻 Onboarded", Order = 1),
     (H | summarize Value = countif(SensorHealthState == "Active") | extend Metric = "✅ Active", Order = 2),
     (H | summarize Value = countif(SensorHealthState == "Inactive") | extend Metric = "⛔ Inactive", Order = 3),
     (H | summarize Value = countif(SensorHealthState has_any ("Impaired", "Misconfigured")) | extend Metric = "⚠️ Impaired", Order = 4),
-    (H | summarize Value = tolong(round(100.0 * countif(SensorHealthState == "Active") / max_of(Total, 1))) | extend Metric = "📊 Coverage %", Order = 5)
+    (print Value = Missing | extend Metric = "🚫 Not Onboarded", Order = 5),
+    (H | summarize Value = tolong(round(100.0 * countif(SensorHealthState == "Active") / max_of(Total, 1))) | extend Metric = "📊 Coverage %", Order = 6)
 | sort by Order asc
-| project Metric, Value
+| project Metric, Value = tolong(Value)
 ```
 
 ## 🟢 Active vs Inactive Sensors
@@ -445,6 +501,8 @@ DeviceInfo
     "❔ Unknown")
 | summarize Devices = count() by Status
 ```
+
+Onboarded devices only. Devices without a sensor are in **Onboarded vs Not Onboarded**.
 
 ## 🥧 Onboarding Status
 Pie chart. Colors: Onboarded green, Not Onboarded orange, Unsupported red, Insufficient Info gray.
@@ -469,18 +527,73 @@ DeviceInfo
 Pie chart. Colors: Onboarded green, Not Onboarded orange.
 
 ```kql
-let TargetDevice = trim(" ", "{DeviceName}");
+let TargetDevice = tolower(trim(" ", "{DeviceName}"));
+let Lookback = 30d;
 let MDE = DeviceInfo
-    | where TimeGenerated > ago(30d)
-    | where isempty(TargetDevice) or DeviceName has TargetDevice
-    | where OnboardingStatus == "Onboarded"
+    | where TimeGenerated > ago(Lookback)
+    | where OnboardingStatus == "Onboarded" or isnotempty(ClientVersion)
     | summarize by Name = tolower(tostring(split(DeviceName, ".")[0]));
-Heartbeat
-| where TimeGenerated > ago(30d)
-| where isempty(TargetDevice) or Computer has TargetDevice
-| summarize arg_max(TimeGenerated, OSType) by Name = tolower(tostring(split(Computer, ".")[0]))
-| extend Status = iff(Name in (MDE), "✅ Onboarded", "⚠️ Not Onboarded")
-| summarize Devices = count() by Status
+let NotOnboarded = union isfuzzy=true
+    (Heartbeat
+        | where TimeGenerated > ago(Lookback)
+        | extend Name = tolower(tostring(split(Computer, ".")[0]))
+        | summarize arg_max(TimeGenerated, OSType, ComputerIP, ResourceGroup) by Name
+        | project Name, LastSeen = TimeGenerated, OS = OSType, IP = ComputerIP,
+                  Source = "Heartbeat (Azure Monitor agent)", Detail = strcat("RG: ", ResourceGroup)),
+    (DeviceInfo
+        | where TimeGenerated > ago(Lookback)
+        | where isnotempty(OnboardingStatus) and OnboardingStatus != "Onboarded"
+        | extend Name = tolower(tostring(split(DeviceName, ".")[0]))
+        | summarize arg_max(TimeGenerated, OSPlatform, OnboardingStatus, DeviceType, PublicIP) by Name
+        | project Name, LastSeen = TimeGenerated, OS = OSPlatform, IP = PublicIP,
+                  Source = "Defender device discovery", Detail = strcat(OnboardingStatus, " | ", DeviceType))
+    | where Name !in (MDE)
+    | where isempty(TargetDevice) or Name has tolower(TargetDevice)
+    | summarize LastSeen = max(LastSeen), OS = take_any(OS), IP = take_any(IP),
+                Sources = make_set(Source), Detail = take_any(Detail) by Name;
+MDE
+| where isempty(TargetDevice) or Name has TargetDevice
+| summarize Devices = count()
+| extend Status = "✅ Onboarded"
+| union (NotOnboarded | summarize Devices = count() | extend Status = "⚠️ Not Onboarded")
+| where Devices > 0
+| project Status, Devices
 ```
 
-Requires the Azure Monitor Agent on the VMs. Devices are matched on short hostname, since Defender sometimes reports the full domain name. VMs without the agent won't appear.
+Uses the same 30-day logic as **Not Onboarded Devices**, so the orange slice matches that panel's row count.
+
+## 🚫 Not Onboarded Devices
+Grid
+
+Every machine without a Defender sensor in the last 30 days, from two sources: machines sending Azure Monitor heartbeats that don't match a Defender device, and devices Defender discovered on the network but isn't protecting. Devices are matched on short hostname.
+
+```kql
+let TargetDevice = tolower(trim(" ", "{DeviceName}"));
+let Lookback = 30d;
+let MDE = DeviceInfo
+    | where TimeGenerated > ago(Lookback)
+    | where OnboardingStatus == "Onboarded" or isnotempty(ClientVersion)
+    | summarize by Name = tolower(tostring(split(DeviceName, ".")[0]));
+let NotOnboarded = union isfuzzy=true
+    (Heartbeat
+        | where TimeGenerated > ago(Lookback)
+        | extend Name = tolower(tostring(split(Computer, ".")[0]))
+        | summarize arg_max(TimeGenerated, OSType, ComputerIP, ResourceGroup) by Name
+        | project Name, LastSeen = TimeGenerated, OS = OSType, IP = ComputerIP,
+                  Source = "Heartbeat (Azure Monitor agent)", Detail = strcat("RG: ", ResourceGroup)),
+    (DeviceInfo
+        | where TimeGenerated > ago(Lookback)
+        | where isnotempty(OnboardingStatus) and OnboardingStatus != "Onboarded"
+        | extend Name = tolower(tostring(split(DeviceName, ".")[0]))
+        | summarize arg_max(TimeGenerated, OSPlatform, OnboardingStatus, DeviceType, PublicIP) by Name
+        | project Name, LastSeen = TimeGenerated, OS = OSPlatform, IP = PublicIP,
+                  Source = "Defender device discovery", Detail = strcat(OnboardingStatus, " | ", DeviceType))
+    | where Name !in (MDE)
+    | where isempty(TargetDevice) or Name has tolower(TargetDevice)
+    | summarize LastSeen = max(LastSeen), OS = take_any(OS), IP = take_any(IP),
+                Sources = make_set(Source), Detail = take_any(Detail) by Name;
+NotOnboarded
+| extend Status = "⚠️ Not Onboarded"
+| project Status, Name, OS, LastSeen, IP, Sources, Detail
+| sort by LastSeen desc
+```
