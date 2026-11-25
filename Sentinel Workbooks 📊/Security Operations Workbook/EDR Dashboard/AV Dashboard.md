@@ -14,9 +14,9 @@ Sentinel workbook for Microsoft Defender antivirus detections, EDR tampering and
 | 📈 AV Detections Over Time | Time chart | Detections per hour for the top 5 threats, everything else grouped as Other |
 | 🧬 Top Detected Threats | Grid | Top 10 threats with device count, remediation and first/last seen |
 | 🥷 EDR Evasions | Grid | BYOVD drivers, EDR-killer tools, EDR process/service kills, Defender tampering, Safe Mode abuse, log tampering |
-| 💓 Defender Health | Grid | Onboarded devices whose sensor isn't Active, with tamper protection state (an empty result means everything is healthy) |
-| 📊 Sensor Coverage Tiles | Tiles | Onboarded, active, inactive, impaired devices and coverage % |
-| 🟢 Active vs Inactive Sensors | Pie chart | Onboarded devices split by sensor health state |
+| 💓 Defender Health | Grid | Onboarded devices whose sensor isn't Active, plus devices with no sensor at all (Not Onboarded), with tamper protection state |
+| 📊 Sensor Coverage Tiles | Tiles | Total, onboarded, active, inactive, impaired and not onboarded devices, and coverage % of all devices |
+| 🟢 Active vs Inactive Sensors | Pie chart | All devices split by sensor health state, including Not Onboarded |
 | 🥧 Onboarding Status | Pie chart | Onboarded vs. devices found by device discovery that aren't onboarded |
 | 🧩 Onboarded vs Not Onboarded | Pie chart | VMs sending Azure Monitor heartbeats compared against Defender's onboarded devices |
 
@@ -376,6 +376,25 @@ Grid
 
 ```kql
 let TargetDevice = trim(" ", "{DeviceName}");
+let MDE = DeviceInfo
+    | where TimeGenerated > ago(30d)
+    | where OnboardingStatus == "Onboarded"
+    | summarize by Name = tolower(tostring(split(DeviceName, ".")[0]));
+let NotOnboarded = union isfuzzy=true
+    (DeviceInfo
+        | where TimeGenerated {TimeRange}
+        | where isempty(TargetDevice) or DeviceName has TargetDevice
+        | summarize arg_max(TimeGenerated, OnboardingStatus, OSPlatform) by DeviceName
+        | where OnboardingStatus == "Can be onboarded"
+        | project DeviceName, OSPlatform, LastSeen = TimeGenerated, Source = "Device discovery"),
+    (Heartbeat
+        | where TimeGenerated {TimeRange}
+        | where isempty(TargetDevice) or Computer has TargetDevice
+        | summarize arg_max(TimeGenerated, OSType) by Computer
+        | project DeviceName = Computer, OSPlatform = OSType, LastSeen = TimeGenerated, Source = "Azure Monitor heartbeat")
+    | extend Name = tolower(tostring(split(DeviceName, ".")[0]))
+    | where Name !in (MDE)
+    | summarize arg_max(LastSeen, DeviceName, OSPlatform), Sources = make_set(Source) by Name;
 let TP = DeviceRegistryEvents
     | where TimeGenerated > ago(90d)
     | where isempty(TargetDevice) or DeviceName has TargetDevice
@@ -383,56 +402,103 @@ let TP = DeviceRegistryEvents
     | where RegistryValueName == "TamperProtection"
     | summarize arg_max(TimeGenerated, RegistryValueData) by DeviceId
     | project DeviceId, TPValue = RegistryValueData, TPChanged = TimeGenerated;
-DeviceInfo
-| where TimeGenerated {TimeRange}
-| where isempty(TargetDevice) or DeviceName has TargetDevice
-| summarize arg_max(TimeGenerated, OnboardingStatus, SensorHealthState, OSPlatform) by DeviceName, DeviceId
-| where OnboardingStatus == "Onboarded"
-| where SensorHealthState !in~ ("Active", "")
-| join kind=leftouter TP on DeviceId
-| extend TamperProtection = case(
-    TPValue == "5", "✅ On",
-    TPValue in ("0", "4"), "⛔ Off",
-    OSPlatform !startswith "Windows", "N/A",
-    "❔ Unknown")
-| extend Severity = case(
-    SensorHealthState has_any ("Inactive", "Misconfigured") or TamperProtection == "⛔ Off", "🔴 Critical",
-    SensorHealthState has "ImpairedCommunication", "🟠 High",
-    "🟡 Medium"
-)
-| project LastSeen = TimeGenerated, Severity, DeviceName, OSPlatform, SensorHealthState,
-          TamperProtection, TPChanged, OnboardingStatus, DeviceId
+let Unhealthy = DeviceInfo
+    | where TimeGenerated {TimeRange}
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
+    | summarize arg_max(TimeGenerated, OnboardingStatus, SensorHealthState, OSPlatform) by DeviceName, DeviceId
+    | where OnboardingStatus == "Onboarded"
+    | where SensorHealthState !in~ ("Active", "")
+    | join kind=leftouter TP on DeviceId
+    | extend TamperProtection = case(
+        TPValue == "5", "✅ On",
+        TPValue in ("0", "4"), "⛔ Off",
+        OSPlatform !startswith "Windows", "N/A",
+        "❔ Unknown")
+    | extend Severity = case(
+        SensorHealthState has_any ("Inactive", "Misconfigured") or TamperProtection == "⛔ Off", "🔴 Critical",
+        SensorHealthState has "ImpairedCommunication", "🟠 High",
+        "🟡 Medium")
+    | project LastSeen = TimeGenerated, Severity, DeviceName, OSPlatform, SensorHealthState,
+              TamperProtection, TPChanged, OnboardingStatus, Source = "Defender", DeviceId;
+union
+    Unhealthy,
+    (NotOnboarded
+        | project LastSeen, Severity = "🔴 Critical", DeviceName, OSPlatform, SensorHealthState = "No sensor",
+                  TamperProtection = "N/A", OnboardingStatus = "⚠️ Not Onboarded", Source = strcat_array(Sources, ", "))
 | sort by Severity asc, LastSeen asc
 ```
 
 `TamperProtection` comes from registry changes in the last 90 days. A device that hasn't changed the setting shows **Unknown**.
+
+**⚠️ Not Onboarded** rows have no Defender sensor at all. They come from Defender device discovery (`Can be onboarded`) and from machines sending Azure Monitor heartbeats that don't match an onboarded device by short hostname.
 
 ## 📊 Sensor Coverage Tiles
 Tiles: Title = `Metric`, Left = `Value`
 
 ```kql
 let TargetDevice = trim(" ", "{DeviceName}");
+let MDE = DeviceInfo
+    | where TimeGenerated > ago(30d)
+    | where OnboardingStatus == "Onboarded"
+    | summarize by Name = tolower(tostring(split(DeviceName, ".")[0]));
+let NotOnboarded = union isfuzzy=true
+    (DeviceInfo
+        | where TimeGenerated {TimeRange}
+        | where isempty(TargetDevice) or DeviceName has TargetDevice
+        | summarize arg_max(TimeGenerated, OnboardingStatus, OSPlatform) by DeviceName
+        | where OnboardingStatus == "Can be onboarded"
+        | project DeviceName, OSPlatform, LastSeen = TimeGenerated, Source = "Device discovery"),
+    (Heartbeat
+        | where TimeGenerated {TimeRange}
+        | where isempty(TargetDevice) or Computer has TargetDevice
+        | summarize arg_max(TimeGenerated, OSType) by Computer
+        | project DeviceName = Computer, OSPlatform = OSType, LastSeen = TimeGenerated, Source = "Azure Monitor heartbeat")
+    | extend Name = tolower(tostring(split(DeviceName, ".")[0]))
+    | where Name !in (MDE)
+    | summarize arg_max(LastSeen, DeviceName, OSPlatform), Sources = make_set(Source) by Name;
 let H = DeviceInfo
     | where TimeGenerated {TimeRange}
     | where isempty(TargetDevice) or DeviceName has TargetDevice
     | summarize arg_max(TimeGenerated, OnboardingStatus, SensorHealthState) by DeviceId
     | where OnboardingStatus == "Onboarded";
-let Total = toscalar(H | count);
+let Missing = toscalar(NotOnboarded | count);
+let Total = toscalar(H | count) + Missing;
 union
+    (print Value = Total | extend Metric = "🖥️ Total Devices", Order = 0),
     (H | summarize Value = count() | extend Metric = "💻 Onboarded", Order = 1),
     (H | summarize Value = countif(SensorHealthState == "Active") | extend Metric = "✅ Active", Order = 2),
     (H | summarize Value = countif(SensorHealthState == "Inactive") | extend Metric = "⛔ Inactive", Order = 3),
     (H | summarize Value = countif(SensorHealthState has_any ("Impaired", "Misconfigured")) | extend Metric = "⚠️ Impaired", Order = 4),
-    (H | summarize Value = tolong(round(100.0 * countif(SensorHealthState == "Active") / max_of(Total, 1))) | extend Metric = "📊 Coverage %", Order = 5)
+    (print Value = Missing | extend Metric = "🚫 Not Onboarded", Order = 5),
+    (H | summarize Value = tolong(round(100.0 * countif(SensorHealthState == "Active") / max_of(Total, 1))) | extend Metric = "📊 Coverage %", Order = 6)
 | sort by Order asc
-| project Metric, Value
+| project Metric, Value = tolong(Value)
 ```
 
 ## 🟢 Active vs Inactive Sensors
-Pie chart. Colors: Active green, Inactive red, Impaired orange, Unknown gray.
+Pie chart. Colors: Active green, Inactive red, Impaired orange, Not Onboarded purple, Unknown gray.
 
 ```kql
 let TargetDevice = trim(" ", "{DeviceName}");
+let MDE = DeviceInfo
+    | where TimeGenerated > ago(30d)
+    | where OnboardingStatus == "Onboarded"
+    | summarize by Name = tolower(tostring(split(DeviceName, ".")[0]));
+let NotOnboarded = union isfuzzy=true
+    (DeviceInfo
+        | where TimeGenerated {TimeRange}
+        | where isempty(TargetDevice) or DeviceName has TargetDevice
+        | summarize arg_max(TimeGenerated, OnboardingStatus, OSPlatform) by DeviceName
+        | where OnboardingStatus == "Can be onboarded"
+        | project DeviceName, OSPlatform, LastSeen = TimeGenerated, Source = "Device discovery"),
+    (Heartbeat
+        | where TimeGenerated {TimeRange}
+        | where isempty(TargetDevice) or Computer has TargetDevice
+        | summarize arg_max(TimeGenerated, OSType) by Computer
+        | project DeviceName = Computer, OSPlatform = OSType, LastSeen = TimeGenerated, Source = "Azure Monitor heartbeat")
+    | extend Name = tolower(tostring(split(DeviceName, ".")[0]))
+    | where Name !in (MDE)
+    | summarize arg_max(LastSeen, DeviceName, OSPlatform), Sources = make_set(Source) by Name;
 DeviceInfo
 | where TimeGenerated {TimeRange}
 | where isempty(TargetDevice) or DeviceName has TargetDevice
@@ -444,6 +510,8 @@ DeviceInfo
     SensorHealthState has_any ("Impaired", "Misconfigured"), "⚠️ Impaired",
     "❔ Unknown")
 | summarize Devices = count() by Status
+| union (NotOnboarded | summarize Devices = count() | extend Status = "🚫 Not Onboarded")
+| where Devices > 0
 ```
 
 ## 🥧 Onboarding Status
