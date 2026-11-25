@@ -14,7 +14,7 @@ Sentinel workbook for Microsoft Defender antivirus detections, EDR tampering and
 | 📈 AV Detections Over Time | Time chart | Detections per hour for the top 5 threats, everything else grouped as Other |
 | 🧬 Top Detected Threats | Grid | Top 10 threats with device count, remediation and first/last seen |
 | 🥷 EDR Evasions | Grid | BYOVD drivers, EDR-killer tools, EDR process/service kills, Defender tampering, Safe Mode abuse, log tampering |
-| 💓 Defender Health | Grid | Onboarded devices whose sensor isn't Active, plus devices with no sensor at all (Not Onboarded), with tamper protection state |
+| 💓 Defender Health | Grid | Onboarded devices whose sensor isn't Active (inactive ones ranked by days inactive), plus devices with no sensor at all, with tamper protection state |
 | 🖥️ Device Overview | Tiles | Total, onboarded, not onboarded, active, inactive and impaired devices, and onboarding coverage % |
 | 🟢 Active vs Inactive Sensors | Pie chart | Onboarded devices split by sensor health state |
 | 🥧 Onboarding Status | Pie chart | Onboarded vs. devices found by device discovery that aren't onboarded |
@@ -407,6 +407,10 @@ let TP = DeviceRegistryEvents
     | where RegistryValueName == "TamperProtection"
     | summarize arg_max(TimeGenerated, RegistryValueData) by DeviceId
     | project DeviceId, TPValue = RegistryValueData, TPChanged = TimeGenerated;
+let ActiveHistory = DeviceInfo
+    | where TimeGenerated > ago(180d)
+    | where isempty(TargetDevice) or DeviceName has TargetDevice
+    | summarize LastActive = maxif(TimeGenerated, SensorHealthState == "Active") by DeviceId;
 let Unhealthy = DeviceInfo
     | where TimeGenerated {TimeRange}
     | where isempty(TargetDevice) or DeviceName has TargetDevice
@@ -414,24 +418,53 @@ let Unhealthy = DeviceInfo
     | where OnboardingStatus == "Onboarded"
     | where SensorHealthState !in~ ("Active", "")
     | join kind=leftouter TP on DeviceId
+    | lookup kind=leftouter ActiveHistory on DeviceId
+    | extend IsInactive = SensorHealthState =~ "Inactive"
+    | extend DaysInactive = iff(IsInactive, iff(isnull(LastActive), 180, datetime_diff("day", now(), LastActive)), long(null))
     | extend TamperProtection = case(
         TPValue == "5", "✅ On",
         TPValue in ("0", "4"), "⛔ Off",
         OSPlatform !startswith "Windows", "N/A",
         "❔ Unknown")
-    | extend Severity = case(
-        SensorHealthState has_any ("Inactive", "Misconfigured") or TamperProtection == "⛔ Off", "🔴 Critical",
-        SensorHealthState has "ImpairedCommunication", "🟠 High",
-        "🟡 Medium")
-    | project LastSeen = TimeGenerated, Severity, DeviceName, OSPlatform, SensorHealthState,
+    | extend SevRank = case(
+        TamperProtection == "⛔ Off", 1,
+        IsInactive and DaysInactive >= 90, 4,
+        IsInactive and DaysInactive >= 60, 3,
+        IsInactive and DaysInactive >= 30, 2,
+        IsInactive, 1,
+        SensorHealthState has "Misconfigured", 1,
+        SensorHealthState has "ImpairedCommunication", 2,
+        3)
+    | extend InactiveAge = case(
+        not(IsInactive), "",
+        DaysInactive >= 180, "180+ days (none Active in lookback)",
+        DaysInactive >= 90, "90+ days: likely decommissioned",
+        DaysInactive >= 60, "60-89 days: probably decommissioned",
+        DaysInactive >= 30, "30-59 days: confirm with owner",
+        "Under 30 days: recently went quiet")
+    | project LastSeen = TimeGenerated, SevRank, DeviceName, OSPlatform, SensorHealthState, DaysInactive, InactiveAge, LastActive,
               TamperProtection, TPChanged, OnboardingStatus, Source = "Defender", DeviceId;
 union
     Unhealthy,
     (NotOnboarded
-        | project LastSeen, Severity = "🔴 Critical", DeviceName = Name, OSPlatform = OS, SensorHealthState = "No sensor",
+        | project LastSeen, SevRank = 1, DeviceName = Name, OSPlatform = OS, SensorHealthState = "No sensor",
                   TamperProtection = "N/A", OnboardingStatus = "⚠️ Not Onboarded", Source = strcat_array(Sources, ", "))
-| sort by Severity asc, LastSeen asc
+| extend Severity = case(SevRank == 1, "🔴 Critical", SevRank == 2, "🟠 High", SevRank == 3, "🟡 Medium", "🔵 Low")
+| sort by SevRank asc, LastSeen desc
+| project LastSeen, Severity, DeviceName, OSPlatform, SensorHealthState, DaysInactive, InactiveAge, LastActive,
+          TamperProtection, TPChanged, OnboardingStatus, Source, DeviceId
 ```
+
+**Inactive sensors are ranked by how long they've been silent**, measured from the last time `DeviceInfo` showed the sensor as Active (180-day lookback):
+
+| Days inactive | Severity | Usually means |
+|---|---|---|
+| Under 30 | 🔴 Critical | Recently went quiet: offline, traveling, or the sensor broke |
+| 30–59 | 🟠 High | Confirm with the owner |
+| 60–89 | 🟡 Medium | Probably decommissioned or rebuilt |
+| 90+ | 🔵 Low | Likely decommissioned: offboard it to clean up the device list |
+
+Defender only marks a sensor Inactive after about 7 days without contact, so the count starts there. A device rebuilt under the same name gets a new DeviceId, and its old record ages into Low.
 
 `TamperProtection` comes from registry changes in the last 90 days. A device that hasn't changed the setting shows **Unknown**.
 
